@@ -1,0 +1,541 @@
+{
+ "events": [
+  {
+   "id": "lost_dog",
+   "kind": "npc",
+   "name": "Мужчина в халате",
+   "text": "Мой пёс убежал в колючие кусты! Достанешь его? Они кусаются, но я заплачу.",
+   "choices": [
+    {
+     "label": "Помочь (-1 HP, +4 монеты)",
+     "result": "Пёс счастлив. Мужчина тоже. Ты — в синяках.",
+     "effects": [
+      {
+       "type": "hp",
+       "value": -1
+      },
+      {
+       "type": "coins",
+       "value": 4
+      },
+      {
+       "type": "sin",
+       "name": "mercy",
+       "value": 2
+      },
+      {
+       "type": "testimony",
+       "id": "helped_dog"
+      }
+     ]
+    },
+    {
+     "label": "Отказаться",
+     "result": "Он вздыхает и отворачивается.",
+     "effects": [
+      {
+       "type": "sin",
+       "name": "egoism",
+       "value": 1
+      }
+     ]
+    },
+    {
+     "label": "Обокрасть (+8 монет)",
+     "result": "Бумажник легко перекочевал в твой карман.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": 8
+      },
+      {
+       "type": "sin",
+       "name": "greed",
+       "value": 2
+      },
+      {
+       "type": "sin",
+       "name": "cunning",
+       "value": 1
+      },
+      {
+       "type": "testimony",
+       "id": "stole_from_man"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "silence_altar",
+   "kind": "altar",
+   "name": "Алтарь Тишины",
+   "text": "Каменный алтарь в форме ладони. Он хочет что-то получить.",
+   "choices": [
+    {
+     "label": "Кровь: -1 макс. HP, урон +1",
+     "result": "Алтарь тихо благодарит.",
+     "effects": [
+      {
+       "type": "max_hp",
+       "value": -1
+      },
+      {
+       "type": "run_mod",
+       "stat": "damage",
+       "op": "add",
+       "value": 1.0
+      },
+      {
+       "type": "testimony",
+       "id": "altar_blood"
+      }
+     ]
+    },
+    {
+     "label": "Молитва: удача +1, стрельба медленнее",
+     "result": "Тебе показалось, что кто-то слушает.",
+     "effects": [
+      {
+       "type": "run_mod",
+       "stat": "luck",
+       "op": "add",
+       "value": 1.0
+      },
+      {
+       "type": "run_mod",
+       "stat": "fire_delay",
+       "op": "mul",
+       "value": 1.15
+      },
+      {
+       "type": "testimony",
+       "id": "altar_prayer"
+      }
+     ]
+    },
+    {
+     "label": "Уйти",
+     "result": "Ты просто уходишь. Алтарь запоминает.",
+     "effects": [
+      {
+       "type": "sin",
+       "name": "sloth",
+       "value": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "witness",
+   "kind": "npc",
+   "name": "Незнакомец",
+   "text": "Я уже видел тебя. Ты стоял вот здесь вчера. И позавчера. В той же пижаме.",
+   "choices": [
+    {
+     "label": "Расспросить",
+     "result": "«Ты всё время уходишь в ту сторону. И всё время возвращаешься».",
+     "effects": [
+      {
+       "type": "testimony",
+       "id": "witness_saw"
+      },
+      {
+       "type": "coins",
+       "value": 2
+      }
+     ]
+    },
+    {
+     "label": "Ударить (+5 монет)",
+     "result": "Он падает. Кажется, он не удивлён.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": 5
+      },
+      {
+       "type": "sin",
+       "name": "aggression",
+       "value": 3
+      },
+      {
+       "type": "testimony",
+       "id": "killed_peaceful"
+      }
+     ]
+    },
+    {
+     "label": "Уйти",
+     "result": "Он смотрит тебе в спину, пока ты не скроешься.",
+     "effects": []
+    }
+   ]
+  },
+  {
+   "id": "corner_shine",
+   "kind": "apparition",
+   "name": "THE SHINE",
+   "text": "В углу — огромное крыло. Оно исчезает, стоит подойти ближе.",
+   "choices": [],
+   "effects": [
+    {
+     "type": "testimony",
+     "id": "saw_shine_corner"
+    },
+    {
+     "type": "notify",
+     "text": "THE SHINE: «Ожидаемо».",
+     "color": "gold"
+    }
+   ]
+  },
+  {
+   "id": "garage_sale",
+   "kind": "npc",
+   "name": "Продавец гаража",
+   "zones": [
+    "suburbs"
+   ],
+   "text": "Всё за бесценок! Только не открывай коробку с фотографиями. Купишь коробку-сюрприз?",
+   "choices": [
+    {
+     "label": "Купить коробку (6 монет): предмет",
+     "requires": {
+      "coins": 6
+     },
+     "result": "Внутри что-то есть. И оно твоё.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": -6
+      },
+      {
+       "type": "item"
+      }
+     ]
+    },
+    {
+     "label": "Стащить коробку: предмет, но соседи злятся",
+     "result": "Ты бежишь. Из-за заборов лают собаки.",
+     "effects": [
+      {
+       "type": "item"
+      },
+      {
+       "type": "sin",
+       "name": "greed",
+       "value": 2
+      },
+      {
+       "type": "sin",
+       "name": "cunning",
+       "value": 1
+      },
+      {
+       "type": "testimony",
+       "id": "garage_theft"
+      },
+      {
+       "type": "spawn",
+       "kind": "mutant_dog",
+       "count": 2
+      }
+     ]
+    },
+    {
+     "label": "Уйти",
+     "result": "Он пожимает плечами и возвращается к столику.",
+     "effects": []
+    }
+   ]
+  },
+  {
+   "id": "swing_kid",
+   "kind": "npc",
+   "name": "Мальчик на качелях",
+   "zones": [
+    "suburbs"
+   ],
+   "text": "Ты видел маму? Она ушла за хлебом перед тем, как стало очень светло.",
+   "choices": [
+    {
+     "label": "Соврать: «Она ждёт тебя дома»",
+     "result": "Он улыбается и перестаёт плакать. Ты чувствуешь себя странно.",
+     "effects": [
+      {
+       "type": "hp",
+       "value": 1
+      },
+      {
+       "type": "sin",
+       "name": "mercy",
+       "value": 1
+      },
+      {
+       "type": "sin",
+       "name": "cunning",
+       "value": 1
+      },
+      {
+       "type": "testimony",
+       "id": "lied_to_child"
+      }
+     ]
+    },
+    {
+     "label": "Сказать правду",
+     "result": "Он перестаёт качаться. Качели ещё долго скрипят.",
+     "effects": [
+      {
+       "type": "testimony",
+       "id": "told_child_truth"
+      }
+     ]
+    },
+    {
+     "label": "Забрать его шоколадку (+2 монеты)",
+     "result": "Она тает у тебя в кармане. Он не возражает.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": 2
+      },
+      {
+       "type": "hp",
+       "value": 1
+      },
+      {
+       "type": "sin",
+       "name": "egoism",
+       "value": 2
+      },
+      {
+       "type": "testimony",
+       "id": "took_child_candy"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "roof_preacher",
+   "kind": "npc",
+   "name": "Проповедник с мегафоном",
+   "zones": [
+    "city"
+   ],
+   "text": "СПАСЕНИЕ — ЭТО ОЧЕРЕДЬ! Встань в неё! Или хотя бы брось монетку тому, кто уже стоит.",
+   "choices": [
+    {
+     "label": "Бросить 2 монеты: +2 HP",
+     "requires": {
+      "coins": 2
+     },
+     "result": "Он кивает. Очередь не сдвинулась, но тебе легче.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": -2
+      },
+      {
+       "type": "hp",
+       "value": 2
+      },
+      {
+       "type": "sin",
+       "name": "mercy",
+       "value": 1
+      }
+     ]
+    },
+    {
+     "label": "Выслушать: удача +1, стрельба чуть медленнее",
+     "result": "Ты ждёшь. Что-то в этом есть. Но руки устали.",
+     "effects": [
+      {
+       "type": "run_mod",
+       "stat": "luck",
+       "op": "add",
+       "value": 1.0
+      },
+      {
+       "type": "run_mod",
+       "stat": "fire_delay",
+       "op": "mul",
+       "value": 1.05
+      },
+      {
+       "type": "testimony",
+       "id": "city_sermon"
+      },
+      {
+       "type": "sin",
+       "name": "sloth",
+       "value": 1
+      }
+     ]
+    },
+    {
+     "label": "Отобрать мегафон (+3 монеты)",
+     "result": "Он замолкает. Из-за угла выбегают крысы.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": 3
+      },
+      {
+       "type": "sin",
+       "name": "aggression",
+       "value": 2
+      },
+      {
+       "type": "testimony",
+       "id": "preacher_robbed"
+      },
+      {
+       "type": "spawn",
+       "kind": "rad_rat",
+       "count": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "billboard_shine",
+   "kind": "apparition",
+   "name": "THE SHINE",
+   "zones": [
+    "city"
+   ],
+   "text": "С рекламного щита на тебя смотрит знакомое лицо. Оно исчезает, когда ты подходишь.",
+   "choices": [],
+   "effects": [
+    {
+     "type": "testimony",
+     "id": "saw_shine_billboard"
+    },
+    {
+     "type": "notify",
+     "text": "THE SHINE: «Ты правда опять взял этот предмет?»",
+     "color": "gold"
+    }
+   ]
+  },
+  {
+   "id": "lookalike_bedroom",
+   "kind": "altar",
+   "name": "Твоя спальня?",
+   "zones": [
+    "center"
+   ],
+   "prop": "bed",
+   "text": "Посреди улицы — кровать. Та же пижама на спинке стула. Те же занавески. Они закрыты.",
+   "choices": [
+    {
+     "label": "Лечь поспать: +4 HP",
+     "result": "Ты просыпаешься. Не помнишь, когда засыпал. Подушка тёплая.",
+     "effects": [
+      {
+       "type": "hp",
+       "value": 4
+      },
+      {
+       "type": "sin",
+       "name": "sloth",
+       "value": 2
+      },
+      {
+       "type": "testimony",
+       "id": "slept_in_bedroom"
+      },
+      {
+       "type": "notify",
+       "text": "THE SHINE: «Ожидаемо».",
+       "color": "gold"
+      }
+     ]
+    },
+    {
+     "label": "Открыть занавески: удача +1",
+     "result": "За ними — та же улица. И ты, смотрящий на неё.",
+     "effects": [
+      {
+       "type": "run_mod",
+       "stat": "luck",
+       "op": "add",
+       "value": 1.0
+      },
+      {
+       "type": "testimony",
+       "id": "opened_curtains_again"
+      }
+     ]
+    },
+    {
+     "label": "Уйти",
+     "result": "Ты уходишь. Кровать остаётся застеленной.",
+     "effects": []
+    }
+   ]
+  },
+  {
+   "id": "reality_clerk",
+   "kind": "npc",
+   "name": "Клерк бюро находок реальности",
+   "zones": [
+    "center"
+   ],
+   "text": "Здесь принимают потерянное. Хотите что-нибудь сдать? Воспоминание, например. Мы заплатим вещью.",
+   "choices": [
+    {
+     "label": "Сдать воспоминание (-1 макс. HP): предмет",
+     "result": "Ты не помнишь, что именно отдал. Зато в руках — вещь.",
+     "effects": [
+      {
+       "type": "max_hp",
+       "value": -1
+      },
+      {
+       "type": "item"
+      },
+      {
+       "type": "testimony",
+       "id": "traded_memory"
+      }
+     ]
+    },
+    {
+     "label": "Купить справку (5 монет): +2 HP, удача +1",
+     "requires": {
+      "coins": 5
+     },
+     "result": "Справка гласит, что ты существуешь. Приятно.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": -5
+      },
+      {
+       "type": "hp",
+       "value": 2
+      },
+      {
+       "type": "run_mod",
+       "stat": "luck",
+       "op": "add",
+       "value": 1.0
+      }
+     ]
+    },
+    {
+     "label": "Уйти",
+     "result": "Клерк записывает что-то в журнал.",
+     "effects": []
+    }
+   ]
+  }
+ ]
+}

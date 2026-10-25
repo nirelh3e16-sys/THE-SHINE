@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "runs": 1,
+  "wins": 1,
+  "best_rooms_cleared": 14,
+  "seen_items": [
+    "old_tv",
+    "faulty_compass",
+    "baby_monitor",
+    "mail_bundle",
+    "black_halo",
+    "shine_feather",
+    "toy_soldier",
+    "radioactive_burger",
+    "broken_clock",
+    "garden_gnome",
+    "empty_photo"
+  ],
+  "testimonies": [
+    "altar_blood",
+    "chaos_slain",
+    "garage_theft",
+    "house_explored",
+    "killed_peaceful",
+    "lumberjack_slain",
+    "mayor_slain",
+    "neighbor_slain",
+    "saw_shine_corner",
+    "shine_defeated",
+    "stole_from_man",
+    "witness_saw"
+  ],
+  "legacy_sins": {
+    "greed": 4,
+    "sloth": 0,
+    "aggression": 3,
+    "egoism": 0,
+    "cunning": 2,
+    "mercy": 1
+  },
+  "settings": {
+    "volume": 0.6,
+    "screen_shake": true,
+    "fill": "stretch",
+    "show_fps": false
+  },
+  "endings": [
+    "good"
+  ],
+  "current_run": null
+}

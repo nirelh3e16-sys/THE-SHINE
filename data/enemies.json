@@ -1,0 +1,183 @@
+{
+ "bush": {
+  "name": "Живой куст",
+  "hp": 9,
+  "speed": 44,
+  "radius": 7,
+  "contact": 1,
+  "behavior": "chase",
+  "sprite": "bush",
+  "coin": 0.35
+ },
+ "face_tree": {
+  "name": "Дерево с лицом",
+  "hp": 16,
+  "speed": 0,
+  "radius": 8,
+  "contact": 1,
+  "behavior": "shoot",
+  "fire": 2.0,
+  "proj_speed": 90,
+  "spread": 3,
+  "sprite": "tree",
+  "coin": 0.5
+ },
+ "crow": {
+  "name": "Радиоактивная птица",
+  "hp": 6,
+  "speed": 60,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "dive",
+  "dive_speed": 215,
+  "sprite": "bird",
+  "coin": 0.3
+ },
+ "mutant_dog": {
+  "name": "Радиоактивная собака",
+  "hp": 8,
+  "speed": 82,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "chase",
+  "sprite": "dog",
+  "coin": 0.3
+ },
+ "mailman": {
+  "name": "Почтальон",
+  "hp": 12,
+  "speed": 28,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "shoot",
+  "fire": 1.5,
+  "proj_speed": 110,
+  "spread": 1,
+  "sprite": "mailman",
+  "coin": 0.5
+ },
+ "sprinkler": {
+  "name": "Бешеный спринклер",
+  "hp": 16,
+  "speed": 0,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "spin",
+  "fire": 0.38,
+  "proj_speed": 85,
+  "sprite": "sprinkler",
+  "coin": 0.5
+ },
+ "cart": {
+  "name": "Тележка-беглянка",
+  "hp": 10,
+  "speed": 45,
+  "radius": 7,
+  "contact": 1,
+  "behavior": "dive",
+  "dive_speed": 235,
+  "sprite": "cart",
+  "coin": 0.3
+ },
+ "neighbor": {
+  "name": "Сосед",
+  "hp": 10,
+  "speed": 40,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "chase",
+  "sprite": "neighbor",
+  "coin": 0.2
+ },
+ "rad_rat": {
+  "name": "Радиационная крыса",
+  "hp": 7,
+  "speed": 100,
+  "radius": 5,
+  "contact": 1,
+  "behavior": "chase",
+  "sprite": "rat",
+  "coin": 0.3
+ },
+ "mutant_cop": {
+  "name": "Мутировавший полицейский",
+  "hp": 20,
+  "speed": 24,
+  "radius": 7,
+  "contact": 1,
+  "behavior": "shoot",
+  "fire": 1.7,
+  "proj_speed": 105,
+  "spread": 3,
+  "spread_step": 0.3,
+  "sprite": "cop",
+  "coin": 0.5
+ },
+ "drone": {
+  "name": "Военный дрон",
+  "hp": 11,
+  "speed": 55,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "burst",
+  "proj_speed": 135,
+  "sprite": "drone",
+  "coin": 0.4
+ },
+ "living_car": {
+  "name": "Живая машина",
+  "hp": 28,
+  "speed": 30,
+  "radius": 10,
+  "contact": 1,
+  "behavior": "dive",
+  "dive_speed": 270,
+  "sprite": "car",
+  "coin": 0.6
+ },
+ "ad_tv": {
+  "name": "Телевизор-рекламщик",
+  "hp": 22,
+  "speed": 0,
+  "radius": 8,
+  "contact": 1,
+  "behavior": "shoot",
+  "fire": 2.3,
+  "proj_speed": 85,
+  "spread": 5,
+  "spread_step": 0.26,
+  "sprite": "tvmon",
+  "coin": 0.5
+ },
+ "eye_swarm": {
+  "name": "Летающий глаз",
+  "hp": 6,
+  "speed": 88,
+  "radius": 5,
+  "contact": 1,
+  "behavior": "chase",
+  "sprite": "eye",
+  "coin": 0.25
+ },
+ "fragment": {
+  "name": "Обломок здания",
+  "hp": 32,
+  "speed": 30,
+  "radius": 9,
+  "contact": 2,
+  "behavior": "chase",
+  "sprite": "fragment",
+  "coin": 0.6
+ },
+ "glitch": {
+  "name": "Глитч",
+  "hp": 14,
+  "speed": 0,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "blink",
+  "proj_speed": 120,
+  "sprite": "glitchling",
+  "coin": 0.5
+ }
+}
