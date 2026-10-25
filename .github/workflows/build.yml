@@ -1,0 +1,68 @@
+name: Build THE SHINE (Windows)
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # нужно для публикации релиза по тегу
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Run tests
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python -m unittest discover tests -v
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          $pyi = @("--noconfirm", "--clean", "--windowed", "--name", "TheShine",
+                   "--add-data", "data;data", "--add-data", "config.json;.")
+          if (Test-Path "assets") { $pyi += @("--add-data", "assets;assets") }
+          if (Test-Path "mus")    { $pyi += @("--add-data", "mus;mus") }
+          else { Write-Warning "Папка mus не найдена: игра будет собрана без музыки." }
+          if (Test-Path "icon.ico") { $pyi += @("--icon", "icon.ico", "--add-data", "icon.ico;.") }
+          else { Write-Warning "icon.ico не найден: будет использована запасная иконка." }
+          $pyi += "main.py"
+          pyinstaller @pyi
+          if (-not (Test-Path "dist/TheShine/TheShine.exe")) { throw "Сборка не создала TheShine.exe" }
+          if (Test-Path "README.md") { Copy-Item README.md dist/TheShine/ }
+
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path dist/TheShine/* -DestinationPath TheShine-windows.zip -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TheShine-windows
+          path: TheShine-windows.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TheShine-windows.zip
+          generate_release_notes: true
