@@ -96,6 +96,51 @@ def _surf(w, h):
     return pygame.Surface((w, h), pygame.SRCALPHA)
 
 
+def make_player_sprite(char_id, scale=1.0):
+    """Спрайт героя: общая заготовка PLAYER с разными палитрами и деталями."""
+    pal = dict(PAL)
+    tweaks = {
+        "lumberjack": {"n": (190, 45, 45), "b": (205, 55, 55)},
+        "tom": {"b": (70, 150, 90), "n": (60, 40, 30)},
+        "bigshot": {"b": (40, 42, 62), "n": (30, 30, 40)},
+        "glitch": {"b": (60, 255, 220), "s": (255, 130, 230), "n": (255, 240, 90)},
+        "angel": {"b": (250, 250, 255), "n": (255, 222, 110)},
+    }
+    pal.update(tweaks.get(char_id, {}))
+    base = from_rows(PLAYER, pal)
+    w, h = base.get_size()
+    if char_id == "lumberjack":
+        for y in range(5, 11):                       # клетчатая рубашка
+            for x in range(w):
+                if base.get_at((x, y))[:3] == pal["b"] and (x + y) % 3 == 0:
+                    base.set_at((x, y), (130, 30, 40))
+        for x in range(3, 7):                        # борода
+            base.set_at((x, 4), (110, 60, 30))
+    elif char_id == "bigshot":
+        for y in range(6, 9):                        # золотой галстук
+            base.set_at((5, y), (255, 215, 70))
+        for x in range(2, 8):                        # тёмные очки
+            base.set_at((x, 3), (10, 10, 14))
+    out = base
+    if char_id == "glitch":
+        out = pygame.Surface((w + 3, h), pygame.SRCALPHA)
+        out.blit(silhouette(base, (255, 70, 200)), (3, 0))
+        out.blit(base, (0, 0))
+        strip = base.subsurface((0, 5, w, 2)).copy()
+        out.blit(strip, (2, 5))
+    elif char_id == "angel":
+        out = pygame.Surface((w + 12, h + 6), pygame.SRCALPHA)
+        for side in (-1, 1):                         # крылья
+            cx = out.get_width() // 2
+            pygame.draw.polygon(out, (245, 245, 255), [(cx + side * 3, 9), (cx + side * 10, 3), (cx + side * 11, 11), (cx + side * 4, 14)])
+        out.blit(base, (6, 6))
+        pygame.draw.ellipse(out, (255, 215, 90), (out.get_width() // 2 - 4, 0, 8, 3), 1)   # нимб
+    sprite = outlined(out)
+    if scale != 1.0:
+        sprite = pygame.transform.scale(sprite, (int(sprite.get_width() * scale), int(sprite.get_height() * scale)))
+    return sprite
+
+
 def make_dog():
     s, d = _surf(16, 12), pygame.draw
     d.ellipse(s, (150, 110, 70), (2, 3, 10, 6))
@@ -445,6 +490,10 @@ def _icon_draw(kind, color):
         d.rect(s, c, (1, 1, 10, 10)); d.rect(s, (200, 200, 210), (2, 2, 8, 6)); d.rect(s, K, (1, 1, 10, 10), 1)
     elif kind == "halo":
         d.ellipse(s, c, (0, 3, 12, 6), 2); d.ellipse(s, (160, 100, 220), (1, 4, 10, 4), 1)
+    elif kind == "axe":
+        d.line(s, (150, 100, 60), (2, 10), (8, 3), 2); d.polygon(s, c, [(6, 1), (11, 3), (10, 7), (7, 5)])
+    elif kind == "shotgun":
+        d.rect(s, (110, 110, 120), (3, 3, 9, 2)); d.rect(s, (110, 110, 120), (3, 6, 9, 2)); d.polygon(s, c, [(0, 5), (4, 4), (4, 9), (1, 11)])
     elif kind == "kettle":
         d.ellipse(s, c, (1, 3, 9, 8)); d.rect(s, c, (8, 4, 3, 2)); d.arc(s, K, (2, 0, 7, 6), 0, 3.14, 1)
     elif kind == "gnome":
@@ -461,7 +510,7 @@ def _icon_draw(kind, color):
 class SpriteBook:
     """Кэш всех спрайтов; создаётся после инициализации дисплея."""
 
-    def __init__(self, item_defs):
+    def __init__(self, item_defs, characters=None):
         self.surf = {
             "player": outlined(from_rows(PLAYER)), "bush": outlined(from_rows(BUSH)),
             "tree": outlined(from_rows(TREE)), "bird": outlined(from_rows(BIRD)),
@@ -473,6 +522,8 @@ class SpriteBook:
             "rat": make_rat(), "cop": make_cop(), "drone": make_drone(), "car": make_car(), "tvmon": make_tvmon(),
             "mayor": make_mayor(), "mayor_desk": make_mayor_desk(), "mayor_surreal": make_mayor_surreal(), "barrier": make_barrier(),
         }
+        for cid, c in (characters or {"rob": {"scale": 1.0}}).items():
+            self.surf["player_" + cid] = make_player_sprite(cid, c.get("scale", 1.0))
         for item in item_defs:
             self.surf["icon_" + item.id] = _icon_draw(item.icon, item.color)
         self.surf["heart_full"] = self._heart((230, 50, 70))

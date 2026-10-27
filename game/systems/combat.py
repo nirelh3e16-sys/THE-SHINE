@@ -26,6 +26,10 @@ def build_player_shots(player, aim, rng=random, force_kind=None, allow_melee=Tru
     explode = "explosive_shots" in flags and "heavy" in flags
     color = (255, 90, 90) if crit else (255, 240, 120)
 
+    if "axe" in flags and allow_melee:   # широкий тяжёлый взмах
+        return [Projectile(origin + aim * 8, aim * 150, dmg * 1.5, life, 16, True, color, pierce=True,
+                           knockback=340, poison="toxic_sweep" in flags, kind="swing")]
+
     if "melee" in flags and allow_melee:
         return [Projectile(origin + aim * 6, aim * 160, dmg * 1.2, life, 12, True, color, pierce=True,
                            knockback=260, poison="toxic_sweep" in flags, kind="swing")]
@@ -42,6 +46,12 @@ def build_player_shots(player, aim, rng=random, force_kind=None, allow_melee=Tru
         speed, dmg, radius = speed * 0.7, dmg * 1.6, 6.0
     elif kind == "pierce":
         pierce, color = True, (150, 220, 255)
+    if "shotgun" in flags:   # пять дробин веером, короткая дальность
+        for i in range(5):
+            a = (i - 2) * 0.17 + rng.uniform(-0.04, 0.04)
+            shots.append(Projectile(origin, _rot(aim, a) * speed * rng.uniform(0.9, 1.1), dmg * 0.55,
+                                    life * 0.6, 2.5, True, color, pierce, knock, explode))
+        return shots
     if kind == "spread":
         for a in (-0.22, 0.0, 0.22):
             shots.append(Projectile(origin, _rot(aim, a) * speed, dmg * 0.6, life, radius, True, color, pierce, knock, explode))

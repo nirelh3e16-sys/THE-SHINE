@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -333,6 +334,105 @@ class IconTests(unittest.TestCase):
         self.assertEqual(PUBLISHER, "FreeDom Studio")
 
 
+class CharacterTests(unittest.TestCase):
+    def setUp(self):
+        from game.systems.characters import load_characters
+        self.db = ItemDatabase.from_file()
+        self.chars = load_characters(self.db)
+
+    def _stats(self, cid):
+        c = self.chars[cid]
+        return self.db.stats(c["start_items"], c["mods"])
+
+    def test_five_plus_default_characters(self):
+        self.assertEqual(list(self.chars), ["rob", "lumberjack", "tom", "bigshot", "glitch", "angel"])
+        self.assertIsNone(self.chars["rob"]["unlock"])
+
+    def test_hearts_match_design(self):
+        hearts = {cid: self._stats(cid)["max_hp"] / 2 for cid in self.chars}
+        self.assertEqual(hearts["rob"], 3)
+        self.assertEqual(hearts["lumberjack"], 3)
+        self.assertEqual(hearts["tom"], 6)
+        self.assertEqual(hearts["bigshot"], 2)
+        self.assertEqual(hearts["glitch"], 1)
+        self.assertEqual(hearts["angel"], 3)
+
+    def test_speed_and_size(self):
+        base = BASE_STATS["speed"]
+        self.assertLess(self._stats("tom")["speed"], base)
+        self.assertGreater(self.chars["tom"]["scale"], 1.0)
+        self.assertGreater(self._stats("bigshot")["speed"], base)
+        self.assertGreater(self._stats("glitch")["speed"], self._stats("bigshot")["speed"])
+
+    def test_start_items(self):
+        self.assertEqual(self.chars["lumberjack"]["start_items"], ["axe", "faulty_compass"])
+        self.assertEqual(self.chars["tom"]["start_items"], ["baby_monitor", "half_nuke"])
+        self.assertEqual(self.chars["bigshot"]["start_items"], ["toy_soldier", "pressure_kettle"])
+        self.assertEqual(self.chars["glitch"]["start_items"], ["old_tv", "pressure_kettle"])
+        self.assertEqual(self.chars["angel"]["start_items"], ["shotgun"])
+
+    def test_angel_traits(self):
+        self.assertEqual(set(self.chars["angel"]["traits"]), {"ghost", "gravity_immune"})
+
+    def test_unlock_after_ten_boss_kills(self):
+        from game.systems.characters import record_boss_kill, is_unlocked, unlocked_ids, progress
+        save = {"boss_kills": {}}
+        self.assertEqual(unlocked_ids(self.chars, save), ["rob"])
+        for i in range(9):
+            self.assertEqual(record_boss_kill(save, self.chars, "lumberjack"), [])
+        self.assertFalse(is_unlocked(self.chars["lumberjack"], save))
+        self.assertEqual(progress(self.chars["lumberjack"], save), (9, 10))
+        self.assertEqual(record_boss_kill(save, self.chars, "lumberjack"), ["lumberjack"])   # ровно на 10-й
+        self.assertTrue(is_unlocked(self.chars["lumberjack"], save))
+        self.assertEqual(record_boss_kill(save, self.chars, "lumberjack"), [])               # на 11-й повторно не объявляется
+        self.assertFalse(is_unlocked(self.chars["tom"], save))                                # другой босс — другой персонаж
+
+    def test_each_character_has_own_boss(self):
+        bosses = [c["unlock"]["boss"] for c in self.chars.values() if c["unlock"]]
+        self.assertEqual(bosses, ["lumberjack", "neighbor", "mayor", "chaos", "shine"])
+        self.assertTrue(all(c["unlock"]["kills"] == 10 for c in self.chars.values() if c["unlock"]))
+
+    def test_unlock_all_flag(self):
+        from game.systems.characters import unlocked_ids
+        self.assertEqual(len(unlocked_ids(self.chars, {}, unlock_all=True)), len(self.chars))
+
+    def test_axe_and_shotgun_items(self):
+        self.assertIn("axe", self.db.items["axe"].flags)
+        self.assertIn("shotgun", self.db.items["shotgun"].flags)
+        self.assertGreater(self.db.stats(["shotgun"])["fire_delay"], BASE_STATS["fire_delay"])
+
+    def test_steam_is_optional(self):
+        from game.steam import Steam
+        s = Steam(enabled=False)
+        self.assertFalse(s.available)
+        s.update()
+        self.assertFalse(s.unlock("ANYTHING"))
+
+
+class StatsViewTests(unittest.TestCase):
+    def test_stat_rows_show_hp_damage_speed(self):
+        from game.systems.characters import load_characters
+        from game.systems.statsview import build_stat_rows
+        db = ItemDatabase.from_file()
+        chars = load_characters(db)
+        c = chars["tom"]
+        owned = list(c["start_items"])
+        player = SimpleNamespace(stats=db.stats(owned, c["mods"]), hp=12, max_hp=12, RADIUS=7.5, char=c,
+                                 temp_buffs=[["damage", "mul", 1.5, 4.2]], inv=SimpleNamespace(items=owned), coins=7)
+        rows = dict(build_stat_rows(player, rooms_cleared=3))
+        self.assertEqual(rows["Персонаж"], "Том")
+        self.assertIn("6 / 6 сердец", rows["Здоровье"])
+        self.assertIn("Урон за выстрел", rows)
+        self.assertIn("%", rows["Скорость движения"])
+        self.assertEqual(rows["Монет"], "7")
+        self.assertEqual(rows["Комнат пройдено"], "3")
+        self.assertTrue(any(k.startswith("Временно") for k in rows))
+        angel = chars["angel"]
+        a = SimpleNamespace(stats=db.stats(angel["start_items"]), hp=6, max_hp=6, RADIUS=5, char=angel, temp_buffs=[],
+                            inv=SimpleNamespace(items=angel["start_items"]), coins=0)
+        self.assertIn("Особенности", dict(build_stat_rows(a)))
+
+
 class ConfigTests(unittest.TestCase):
     def test_bad_config_falls_back(self):
         with tempfile.TemporaryDirectory() as d:
@@ -394,6 +494,166 @@ class LaserTests(unittest.TestCase):
         self.assertTrue(laser.hits(pygame.Vector2(100, 3), 5))
         self.assertFalse(laser.hits(pygame.Vector2(100, 40), 5))
         self.assertFalse(laser.hits(pygame.Vector2(-50, 0), 5))
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class WeaponTests(unittest.TestCase):
+    def _player(self, item_ids):
+        import pygame
+        db = ItemDatabase.from_file()
+        return SimpleNamespace(stats=db.stats(item_ids), flags=db.flags(item_ids), pos=pygame.Vector2(100, 100))
+
+    def test_shotgun_fires_five_pellets_and_axe_one_swing(self):
+        import pygame
+        from game.systems.combat import build_player_shots
+        aim = pygame.Vector2(1, 0)
+        pellets = build_player_shots(self._player(["shotgun"]), aim, random.Random(1))
+        self.assertEqual(len(pellets), 5)
+        swing = build_player_shots(self._player(["axe"]), aim, random.Random(1))
+        self.assertEqual(len(swing), 1)
+        self.assertEqual(swing[0].kind, "swing")
+        self.assertTrue(swing[0].pierce)
+        plain = build_player_shots(self._player([]), aim, random.Random(1))
+        self.assertEqual(len(plain), 1)
+        self.assertGreater(swing[0].damage, plain[0].damage)
+
+    def test_character_sprites_build(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.sprites import make_player_sprite
+        import json
+        from game.settings import DATA_DIR
+        with open(DATA_DIR / "characters.json", encoding="utf-8") as f:
+            chars = json.load(f)["characters"]
+        sizes = {c["id"]: make_player_sprite(c["id"], c["scale"]).get_size() for c in chars}
+        self.assertGreater(sizes["tom"][0], sizes["rob"][0])
+
+    def test_player_traits_and_hitbox(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.entities.player import Player
+        from game.systems.characters import load_characters
+        db = ItemDatabase.from_file()
+        chars = load_characters(db)
+        tom, rob, angel, glitch = (Player(db, chars[c]) for c in ("tom", "rob", "angel", "glitch"))
+        self.assertGreater(tom.RADIUS, rob.RADIUS)
+        self.assertTrue(angel.ghost and angel.gravity_immune and not rob.ghost)
+        self.assertEqual(glitch.max_hp, 2)
+        self.assertEqual(glitch.hp, 2)
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class BehaviorTests(unittest.TestCase):
+    class FakeRoom:
+        def __init__(self):
+            self.hazards, self.notices, self.rule_requests, self.player_effects = [], [], [], []
+            self.enemies, self.spawn_requests, self.player_shots, self.obstacles = [], [], [], []
+            self.shake_request, self.reshuffle_t = None, None
+
+        def confine(self, pos, r):
+            return False
+
+        def push_out(self, pos, r):
+            return False
+
+        def clamp_player(self, pos, r):
+            pass
+
+        def begin_reshuffle(self, *a, **k):
+            return True
+
+        def enable_gravity(self):
+            pass
+
+    def _player(self, item_ids=()):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.entities.player import Player
+        return Player(ItemDatabase.from_file())
+
+    def test_player_movement_has_inertia(self):
+        import pygame
+        p = self._player()
+        room = self.FakeRoom()
+        right = pygame.Vector2(1, 0)
+        p.update(0.016, right, room)
+        self.assertTrue(0 < p.cur_vel.length() < p.stats["speed"])          # не мгновенный разгон
+        for _ in range(30):
+            p.update(0.016, right, room)
+        self.assertAlmostEqual(p.cur_vel.length(), p.stats["speed"], places=3)
+        p.update(0.016, pygame.Vector2(), room)
+        self.assertGreater(p.cur_vel.length(), 0)                            # и не мгновенная остановка
+        for _ in range(60):
+            p.update(0.016, pygame.Vector2(), room)
+        self.assertEqual(p.cur_vel.length(), 0)
+
+    def test_enemy_chase_has_inertia(self):
+        import pygame
+        from game.entities.enemy import Enemy, load_enemy_defs
+        data = load_enemy_defs()["rad_rat"] if "rad_rat" in load_enemy_defs() else load_enemy_defs()["bush"]
+        e = Enemy("rat", (100, 100), data)
+        e.spawn_t = 0
+        player = SimpleNamespace(pos=pygame.Vector2(300, 100))
+        e.update(0.016, self.FakeRoom(), player, lambda *a, **k: None)
+        self.assertTrue(0 < e.mv.length() < e.speed)
+
+    def test_boss_hp_buffs(self):
+        from game.entities.boss import SHINE, LUMBERJACK, MAYOR
+        self.assertGreaterEqual(SHINE["hp"], 800)
+        self.assertGreater(LUMBERJACK["hp"], 150)
+        self.assertGreater(MAYOR["hp"], 270)
+
+    def test_shine_dive_lands_on_player_and_is_untargetable_in_air(self):
+        import pygame
+        from game.entities.boss import Shine
+        random.seed(3)
+        room = self.FakeRoom()
+        boss = Shine(pygame.Vector2(120, 120))
+        boss.spawn_t = 0
+        player = SimpleNamespace(pos=pygame.Vector2(300, 150), temp_buffs=[])
+        shots = []
+        shoot = lambda *a, **k: shots.append(a)
+        boss._atk_dive(room, player, shoot)
+        self.assertTrue(boss.airborne)
+        self.assertFalse(boss.take_damage(5))        # в воздухе неуязвим
+        self.assertFalse(boss.harmful)
+        for _ in range(200):
+            boss.update(0.016, room, player, shoot)
+            if not boss.airborne:
+                break
+        self.assertFalse(boss.airborne)
+        self.assertLess(boss.pos.distance_to(player.pos), 1.0)               # приземлился прямо на игрока
+        self.assertTrue(any(h.active and h.rect.collidepoint(player.pos) for h in room.hazards))
+
+    def test_shine_sometimes_dodges_incoming_shots(self):
+        import pygame
+        from game.entities.boss import Shine
+        from game.entities.projectile import Projectile
+        random.seed(1)
+        room = self.FakeRoom()
+        boss = Shine(pygame.Vector2(300, 150))
+        boss.spawn_t = 0
+        dodged = 0
+        for _ in range(40):
+            boss.dodge_cd = boss.dodge_t = 0
+            shot = Projectile((220, 150), (220, 0), 3, 1, 3, True, (255, 255, 255))
+            room.player_shots = [shot]
+            boss._try_dodge(room)
+            if boss.dodge_t > 0:
+                dodged += 1
+                self.assertAlmostEqual(abs(boss.dodge_vec.x), 0, places=3)   # уворот строго вбок от траектории
+        self.assertGreater(dodged, 0)
+        self.assertLess(dodged, 40)                                           # «иногда», а не всегда
+
+    def test_shine_keeps_distance(self):
+        import pygame
+        from game.entities.boss import Shine
+        room = self.FakeRoom()
+        boss = Shine(pygame.Vector2(300, 150))
+        boss.spawn_t = 0
+        boss.timer = 99
+        player = SimpleNamespace(pos=pygame.Vector2(280, 150), temp_buffs=[])
+        start = boss.pos.distance_to(player.pos)
+        for _ in range(30):
+            boss.update(0.016, room, player, lambda *a, **k: None)
+        self.assertGreater(boss.pos.distance_to(player.pos), start)
 
 
 if __name__ == "__main__":

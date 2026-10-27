@@ -8,9 +8,10 @@ from .settings import GAME_W, GAME_H
 
 
 class Display:
-    def __init__(self, scale=2, fullscreen=False):
+    def __init__(self, scale=2, fullscreen=False, gpu=True):
         self.surface = pygame.Surface((GAME_W, GAME_H))
         self.fullscreen = fullscreen
+        self.gpu = gpu   # SCALED: вывод через SDL renderer (Direct3D/OpenGL) — на нём работает оверлей Steam
         self.scale = max(1, int(scale))
         self._create_window()
         self._offset = (0, 0)
@@ -18,7 +19,31 @@ class Display:
         self.fill_mode = "blur"   # "blur" — размытое продолжение кадра по краям, "stretch" — растянуть
         self._shade = None
 
+    @staticmethod
+    def _desktop_size():
+        try:
+            return pygame.display.get_desktop_sizes()[0]
+        except (AttributeError, IndexError, pygame.error):
+            info = pygame.display.Info()
+            return info.current_w, info.current_h
+
+    def _canvas_size(self):
+        """Размер холста в полноэкранном GPU-режиме: под пропорции монитора, чтобы не было полос."""
+        dw, dh = self._desktop_size()
+        aspect = dw / max(1, dh)
+        return max(GAME_W, math.ceil(GAME_H * aspect)), max(GAME_H, math.ceil(GAME_W / aspect))
+
     def _create_window(self):
+        if self.gpu:
+            try:
+                if self.fullscreen:
+                    pygame.display.set_mode(self._canvas_size(), pygame.SCALED | pygame.FULLSCREEN)
+                else:
+                    pygame.display.set_mode((GAME_W, GAME_H), pygame.SCALED | pygame.RESIZABLE)
+                pygame.display.set_caption("THE SHINE — FreeDom Studio")
+                return
+            except pygame.error:
+                self.gpu = False  # запасной программный вывод
         if self.fullscreen:
             pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:

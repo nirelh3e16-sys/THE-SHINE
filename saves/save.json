@@ -1,51 +1,50 @@
 {
   "version": 1,
-  "runs": 1,
-  "wins": 1,
-  "best_rooms_cleared": 14,
+  "runs": 2,
+  "wins": 0,
+  "best_rooms_cleared": 7,
   "seen_items": [
-    "old_tv",
-    "faulty_compass",
-    "baby_monitor",
-    "mail_bundle",
     "black_halo",
-    "shine_feather",
-    "toy_soldier",
+    "cracked_mask",
+    "broom",
+    "shotgun",
     "radioactive_burger",
-    "broken_clock",
+    "old_tv",
+    "toy_soldier",
+    "half_nuke",
+    "faulty_compass",
+    "pressure_kettle",
     "garden_gnome",
-    "empty_photo"
+    "baby_monitor",
+    "rusty_revolver",
+    "empty_photo",
+    "mail_bundle"
   ],
   "testimonies": [
-    "altar_blood",
-    "chaos_slain",
-    "garage_theft",
     "house_explored",
-    "killed_peaceful",
     "lumberjack_slain",
-    "mayor_slain",
     "neighbor_slain",
     "saw_shine_corner",
-    "shine_defeated",
-    "stole_from_man",
-    "witness_saw"
+    "stole_from_man"
   ],
   "legacy_sins": {
-    "greed": 4,
+    "greed": 2,
     "sloth": 0,
-    "aggression": 3,
+    "aggression": 0,
     "egoism": 0,
-    "cunning": 2,
-    "mercy": 1
+    "cunning": 1,
+    "mercy": 0
   },
   "settings": {
     "volume": 0.6,
     "screen_shake": true,
-    "fill": "stretch",
-    "show_fps": false
+    "fill": "blur",
+    "show_fps": true
   },
-  "endings": [
-    "good"
-  ],
+  "endings": [],
+  "boss_kills": {
+    "lumberjack": 2,
+    "neighbor": 1
+  },
   "current_run": null
 }

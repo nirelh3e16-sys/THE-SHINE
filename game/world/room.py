@@ -54,6 +54,7 @@ class Room:
         self.spec, self.kind, self.zone = spec, spec.kind, zone
         self.ns = ns  # префикс ключей, чтобы разные зоны и дома не пересекались
         self.hazards = []
+        self.player_shots = []     # заполняется PlayState каждый кадр (боссы смотрят на летящие снаряды)
         self.notices = []          # сообщения боссов для игрока: (текст, цвет)
         self.rule_requests = []    # временные правила боя: ("invert", секунды), ("scramble_ui", 0)
         self.player_effects = []   # (stat, op, value, секунды, текст) — применяются игроку в PlayState

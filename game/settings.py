@@ -34,6 +34,8 @@ DEFAULT_CONFIG = {
     "max_player_projectiles": 120,
     "max_enemy_projectiles": 160,
     "max_particles": 300,
+    "gpu_present": True,              # вывод через GPU (SDL renderer): нужен для оверлея Steam
+    "unlock_all_characters": False,   # для разработчика: открыть всех персонажей
 }
 
 

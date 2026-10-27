@@ -1,0 +1,129 @@
+{
+ "characters": [
+  {
+   "id": "rob",
+   "name": "Роб",
+   "desc": "Обычный парень в пижаме. Ничего особенного — и в этом его проблема.",
+   "mods": [],
+   "start_items": [],
+   "scale": 1.0,
+   "traits": [],
+   "unlock": null
+  },
+  {
+   "id": "lumberjack",
+   "name": "Лесник",
+   "desc": "Бензопила сгорела вместе с лесом. Остался топор.",
+   "mods": [],
+   "start_items": [
+    "axe",
+    "faulty_compass"
+   ],
+   "scale": 1.0,
+   "traits": [],
+   "unlock": {
+    "boss": "lumberjack",
+    "kills": 10
+   }
+  },
+  {
+   "id": "tom",
+   "name": "Том",
+   "desc": "Большой и неторопливый. Сердце у него такое же большое.",
+   "mods": [
+    [
+     "max_hp",
+     "add",
+     4
+    ],
+    [
+     "speed",
+     "mul",
+     0.8
+    ]
+   ],
+   "start_items": [
+    "baby_monitor",
+    "half_nuke"
+   ],
+   "scale": 1.5,
+   "traits": [],
+   "unlock": {
+    "boss": "neighbor",
+    "kills": 10
+   }
+  },
+  {
+   "id": "bigshot",
+   "name": "Большая шишка",
+   "desc": "Важная персона: хрупкая, быстрая и вечно занятая.",
+   "mods": [
+    [
+     "max_hp",
+     "add",
+     -2
+    ],
+    [
+     "speed",
+     "mul",
+     1.2
+    ]
+   ],
+   "start_items": [
+    "toy_soldier",
+    "pressure_kettle"
+   ],
+   "scale": 1.0,
+   "traits": [],
+   "unlock": {
+    "boss": "mayor",
+    "kills": 10
+   }
+  },
+  {
+   "id": "glitch",
+   "name": "Глич",
+   "desc": "Ошибка, научившаяся бегать. Одно сердце, зато очень быстро.",
+   "mods": [
+    [
+     "max_hp",
+     "add",
+     -4
+    ],
+    [
+     "speed",
+     "mul",
+     1.35
+    ]
+   ],
+   "start_items": [
+    "old_tv",
+    "pressure_kettle"
+   ],
+   "scale": 1.0,
+   "traits": [],
+   "unlock": {
+    "boss": "chaos",
+    "kills": 10
+   }
+  },
+  {
+   "id": "angel",
+   "name": "Ангел",
+   "desc": "Проходит сквозь блоки. Гравитация на него не действует.",
+   "mods": [],
+   "start_items": [
+    "shotgun"
+   ],
+   "scale": 1.0,
+   "traits": [
+    "ghost",
+    "gravity_immune"
+   ],
+   "unlock": {
+    "boss": "shine",
+    "kills": 10
+   }
+  }
+ ]
+}

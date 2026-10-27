@@ -8,5 +8,7 @@
   "zones": { "forest": { "rooms": 8 }, "suburbs": { "rooms": 9 }, "city": { "rooms": 9 }, "center": { "rooms": 9 } },
   "max_player_projectiles": 120,
   "max_enemy_projectiles": 160,
-  "max_particles": 300
+  "max_particles": 300,
+  "gpu_present": true,
+  "unlock_all_characters": true
 }

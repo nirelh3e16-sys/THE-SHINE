@@ -1,0 +1,2 @@
+# Необязательно: достижения Steam (нужны также steam_api64.dll и SteamworksPy64.dll рядом с игрой)
+steamworks

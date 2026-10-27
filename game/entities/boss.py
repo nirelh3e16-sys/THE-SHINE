@@ -8,7 +8,7 @@ from .enemy import Enemy
 from ..settings import ROOM_X, ROOM_Y, ROOM_W, ROOM_H
 from .hazard import Hazard, Laser
 
-LUMBERJACK = {"name": "Лесник", "hp": 150, "speed": 55, "radius": 16, "contact": 1,
+LUMBERJACK = {"name": "Лесник", "hp": 250, "speed": 68, "radius": 16, "contact": 1,
               "behavior": "chase", "sprite": "lumberjack", "coin": 0}
 
 # Кандидаты на падение деревьев: углы и края вдали от дверей — проход всегда остаётся
@@ -65,18 +65,23 @@ class Lumberjack(Enemy):
                 self.state, self.timer = "charge", 0.65
                 self.contact = 2
         elif self.state == "charge":
-            self.pos += self.aim * 240 * dt
+            self.pos += self.aim * 275 * dt
             if self.timer <= 0 or room.confine(self.pos, self.radius):
                 self.state, self.timer, self.contact = "recover", 0.9, 1
                 room.shake_request = (3, 0.2)
+                if self.phase == 2:   # после рывка во второй фазе — веер пил
+                    off = random.uniform(0, math.tau)
+                    for i in range(8):
+                        a = off + i * math.tau / 8
+                        shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 95, 1, radius=4, color=(200, 210, 230))
         elif self.state == "wind_saws":
             if self.timer <= 0:
-                n = 12 if self.phase == 2 else 8
+                n = 16 if self.phase == 2 else 10
                 off = random.uniform(0, math.tau)
                 for i in range(n):
                     a = off + i * math.tau / n
                     shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 105, 1, radius=4, color=(200, 210, 230))
-                self.state, self.timer = "walk", 1.0
+                self.state, self.timer = "walk", 0.7
         elif self.state == "wind_fell":
             if self.timer <= 0:
                 for rect in self.warn_rects:
@@ -84,9 +89,9 @@ class Lumberjack(Enemy):
                     room.damage_zones.append((rect.copy(), 2))
                 self.warn_rects = []
                 room.shake_request = (4, 0.3)
-                self.state, self.timer = "walk", 1.0
+                self.state, self.timer = "walk", 0.7
         elif self.state == "recover" and self.timer <= 0:
-            self.state, self.timer = "walk", 0.8 if self.phase == 2 else 1.2
+            self.state, self.timer = "walk", 0.55 if self.phase == 2 else 0.9
         room.confine(self.pos, self.radius)
 
     def _choose_attack(self, room, player):
@@ -105,7 +110,7 @@ class Lumberjack(Enemy):
         else:
             free = [r for r in STUMP_SPOTS if not any(r.colliderect(s) for s in room.stumps)]
             random.shuffle(free)
-            count = min(2, MAX_STUMPS - len(room.stumps))
+            count = min(3, MAX_STUMPS - len(room.stumps))
             self.warn_rects = free[:count]
             self.state, self.timer = "wind_fell", 1.4
             if not self.warn_rects:
@@ -304,7 +309,7 @@ class Neighbor(Enemy):
             pygame.draw.circle(surf, (255, 255, 255), (int(self.pos.x + off.x), int(self.pos.y + off.y)), self.radius + 6, 1)
 
 
-MAYOR = {"name": "Мэр", "hp": 270, "speed": 0, "radius": 16, "contact": 1,
+MAYOR = {"name": "Мэр", "hp": 430, "speed": 0, "radius": 16, "contact": 1,
          "behavior": "chase", "sprite": "mayor", "coin": 0}
 # закон: (название на экране, перезарядка мин, макс)
 LAWS = {
@@ -360,28 +365,27 @@ class Mayor(Enemy):
             if self.timer <= 0:
                 self.state, self.timer = "idle", 0.8
         elif st == "idle":
-            if self.phase >= 2:
-                self.pos += d * (42 if self.phase == 2 else 36) * dt
+            self.pos += d * (24, 44, 38)[self.phase - 1] * dt   # в первой фазе медленно подходит
             if self.timer <= 0:
                 self._choose(room, player)
         elif st == "sign":
             if self.timer <= 0:
                 self._apply_law(room, player)
-                self.state, self.timer, self.law = "idle", (2.2, 1.6, 1.3)[self.phase - 1], None
+                self.state, self.timer, self.law = "idle", (1.5, 1.2, 1.0)[self.phase - 1], None
         elif st == "wind_stamp":
             if self.timer <= 0:
                 base = math.atan2(to_player.y, to_player.x) if to_player.length_squared() else 0.0
-                for off in (-0.3, 0.0, 0.3):
+                for off in (-0.5, -0.25, 0.0, 0.25, 0.5):
                     a = base + off
                     shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 115, 1, radius=4, color=(250, 245, 225))
-                self.state, self.timer = "idle", (2.0, 1.5, 1.2)[self.phase - 1]
+                self.state, self.timer = "idle", (1.5, 1.2, 1.0)[self.phase - 1]
         elif st == "wind_charge":
             if self.timer > 0.35:
                 self.aim = d.copy()
             if self.timer <= 0:
                 self.state, self.timer, self.contact = "charge", 0.6, 2
         elif st == "charge":
-            self.pos += self.aim * 230 * dt
+            self.pos += self.aim * 265 * dt
             if self.timer <= 0 or room.confine(self.pos, self.radius):
                 self.state, self.timer, self.contact = "recover", 0.9, 1
                 room.shake_request = (3, 0.2)
@@ -390,7 +394,7 @@ class Mayor(Enemy):
                 self.state, self.timer = "idle", 0.8
         elif st == "wind_papers":
             if self.timer <= 0:
-                n = 10
+                n = 14
                 off = random.uniform(0, math.tau)
                 for i in range(n):
                     a = off + i * math.tau / n
@@ -398,14 +402,14 @@ class Mayor(Enemy):
                 self.state, self.timer = "idle", 1.4
         elif st == "wind_spiral":
             if self.timer <= 0:
-                self.state, self.timer, self.spin_tick = "spiral", 3.2, 0.0
+                self.state, self.timer, self.spin_tick = "spiral", 3.6, 0.0
         elif st == "spiral":
             self.spin_tick -= dt
             if self.spin_tick <= 0:
                 self.spin_tick = 0.2
                 self.spin += 0.45
-                for arm in range(3):
-                    a = self.spin + arm * math.tau / 3
+                for arm in range(4):
+                    a = self.spin + arm * math.tau / 4
                     shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 80, 1, radius=3, color=(200, 120, 255))
             if self.timer <= 0:
                 self.state, self.timer = "recover", 1.0
@@ -418,7 +422,7 @@ class Mayor(Enemy):
     def _choose(self, room, player):
         options = []
         calm = not room.hazards and room.reshuffle_t is None
-        if self.cooldowns["hire"] <= 0 and self._enemy_count(room) < 4:
+        if self.cooldowns["hire"] <= 0 and self._enemy_count(room) < 5:
             options.append("hire")
         if self.cooldowns["demolish"] <= 0 and calm:
             options.append("demolish")
@@ -454,13 +458,13 @@ class Mayor(Enemy):
     def _apply_law(self, room, player):
         law = self.law
         if law == "hire":
-            room.request_spawn(random.choice(("rad_rat", "mutant_cop")), 2)
+            room.request_spawn(random.choice(("rad_rat", "mutant_cop")), 3)
         elif law == "demolish":
-            room.hazards.extend(drop_hazards(player.pos, 4, 34, 1.2))
+            room.hazards.extend(drop_hazards(player.pos, 5, 34, 1.2))
         elif law == "reform":
             room.begin_reshuffle(player.pos, 4)
         elif law == "tax":
-            room.player_effects.append(("fire_delay", "mul", 1.35, 8.0, "Налог на скорострельность: стрельба медленнее (8 с)"))
+            room.player_effects.append(("fire_delay", "mul", 1.5, 10.0, "Налог на скорострельность: стрельба медленнее (10 с)"))
 
     @property
     def warning(self):
@@ -700,13 +704,13 @@ def mow_hazards(player_pos, n_h=2, n_v=0):
     return hs
 
 
-SHINE = {"name": "THE SHINE", "hp": 520, "speed": 0, "radius": 22, "contact": 1,
+SHINE = {"name": "THE SHINE", "hp": 900, "speed": 0, "radius": 22, "contact": 1,
          "behavior": "chase", "sprite": "shine", "coin": 0}
 WING_BAND = 120
 WING_SPEED = 160.0
 # перезарядки (мин, макс) для атак, создающих опасные зоны, — 5–10 секунд, как у остальных боссов
 SHINE_CD = {"mow": (5, 10), "rain": (5, 10), "geometry": (9, 13), "spiral": (6, 10),
-            "wings": (4, 7), "halos": (4, 8), "rule": (11, 15), "papers": (4, 7)}
+            "wings": (4, 7), "halos": (4, 8), "rule": (11, 15), "papers": (4, 7), "dive": (7, 11)}
 RULES = (
     ("invert", "ПРАВИЛО: управление инвертировано (6 с)"),
     ("heavy", "ПРАВИЛО: ты медленнее, но стреляешь чаще (6 с)"),
@@ -750,6 +754,23 @@ class Shine(Enemy):
         self.simple_t = 0.0            # пока > 0 — только лёгкие атаки (во время «правил»)
         self.pupil = pygame.Vector2()
         self.ctx = None
+        # поведение «убегающего» босса
+        self.airborne = False          # пока летит над ареной — неуязвим и безопасен
+        self.rise = 0.0
+        self.target = pygame.Vector2()
+        self.dodge_t = self.dodge_cd = self.flip_cd = self.corner_t = 0.0
+        self.dodge_vec = pygame.Vector2()
+        self.circle_dir = random.choice((-1, 1))
+        self.cornered = False
+
+    @property
+    def harmful(self):
+        return self.spawn_t <= 0 and not self.dead and not self.airborne
+
+    def take_damage(self, dmg, direction=None, knockback=0.0):
+        if self.airborne:
+            return False
+        return super().take_damage(dmg, direction, knockback)
 
     # --- комментарии: только по событиям, с общим ограничением частоты ---
     def comment(self, key, room=None):
@@ -781,6 +802,11 @@ class Shine(Enemy):
         self.simple_t = max(0.0, self.simple_t - dt)
         for k in self.cd:
             self.cd[k] = max(0.0, self.cd[k] - dt)
+        self.dodge_cd = max(0.0, self.dodge_cd - dt)
+        self.flip_cd = max(0.0, self.flip_cd - dt)
+        if self.dodge_t > 0:   # короткий рывок в сторону от летящего снаряда
+            self.dodge_t -= dt
+            self.pos += self.dodge_vec * 330 * dt
         for ev in self.delayed:
             ev[0] -= dt
         due = [ev for ev in self.delayed if ev[0] <= 0]
@@ -798,15 +824,40 @@ class Shine(Enemy):
         st = self.state
         if st == "roar":
             if self.timer <= 0:
-                self.state, self.timer = "idle", 0.8
+                self.state, self.timer = "idle", 0.6
         elif st == "idle":
-            speed = 38 + 6 * self.phase
-            if dist > 170:
-                self.pos += d * speed * dt
-            elif dist < 100:
-                self.pos -= d * speed * dt
-            if self.timer <= 0:
+            # держит дистанцию: отступает от игрока, кружит и подтягивается, если далеко
+            speed = 70 + 12 * self.phase
+            perp = pygame.Vector2(-d.y, d.x) * self.circle_dir
+            if dist < 210:
+                desired = -d * 0.85 + perp * 0.45
+            elif dist > 300:
+                desired = d * 0.6
+            else:
+                desired = perp * 0.5
+            self.pos += desired * speed * dt
+            self._try_dodge(room)
+            if self.cornered:   # загнали в угол: меняем направление кружения, а затем взлетаем и падаем на игрока
+                self.corner_t += dt
+                if self.corner_t > 0.35 and self.flip_cd <= 0:
+                    self.circle_dir, self.flip_cd = -self.circle_dir, 0.8
+                if self.corner_t > 1.0:
+                    self.corner_t = 0.0
+                    self._atk_dive(room, player, shoot)
+            else:
+                self.corner_t = max(0.0, self.corner_t - dt)
+            if self.timer <= 0 and self.state == "idle":
                 self._choose(room, player, shoot)
+        elif st == "dive_up":
+            self.rise = min(46.0, self.rise + 130 * dt)
+            self.target = player.pos.copy()
+            if self.timer <= 0:
+                self.state, self.timer = "dive_air", 1.0
+        elif st == "dive_air":
+            if self.timer > 0.45:   # метка следует за игроком, но в последние 0.45 с фиксируется
+                self.target = player.pos.copy()
+            if self.timer <= 0:
+                self._land(room, shoot)
         elif st == "cast":
             if self.timer <= 0:
                 fn, self.cast_fn, self.label = self.cast_fn, None, None
@@ -839,7 +890,48 @@ class Shine(Enemy):
                     shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 80, 1, radius=3, color=(255, 235, 150))
             if self.timer <= 0:
                 self.state, self.timer = "recover", 1.0
-        room.confine(self.pos, self.radius)
+        if not self.airborne:
+            self.cornered = room.confine(self.pos, self.radius)
+
+    def _try_dodge(self, room):
+        """Иногда уворачивается от снаряда игрока, летящего прямо в него."""
+        if self.dodge_cd > 0 or self.dodge_t > 0:
+            return
+        for pr in getattr(room, "player_shots", ()):
+            if pr.dead or pr.kind == "swing" or getattr(pr, "_shine_seen", False):
+                continue
+            speed = pr.vel.length()
+            rel = self.pos - pr.pos
+            if speed <= 0 or rel.length() > 150:
+                continue
+            fwd = pr.vel / speed
+            if rel.dot(fwd) <= 0:
+                continue
+            perp = pygame.Vector2(-fwd.y, fwd.x)
+            lateral = rel.dot(perp)
+            if abs(lateral) > self.radius + pr.radius + 6:
+                continue
+            pr._shine_seen = True               # решение принимается один раз для каждого снаряда
+            if random.random() < 0.45:
+                self.dodge_vec = perp * (1 if lateral >= 0 else -1)
+                self.dodge_t = 0.22
+                self.dodge_cd = random.uniform(1.6, 2.8)
+                return
+
+    def _land(self, room, shoot):
+        """Приземление точно на метку: зона урона и (во 2–3 фазах) кольцо пуль."""
+        self.pos = pygame.Vector2(self.target)
+        self.airborne, self.rise = False, 0.0
+        room.hazards.append(Hazard((self.pos.x - 42, self.pos.y - 42, 84, 84), 2, 0.0, 0.25, kind="drop"))
+        room.shake_request = (5, 0.3)
+        if self.phase >= 2:
+            self._ring(self.pos, shoot)
+        self.state, self.timer = "recover", 0.9
+
+    def _atk_dive(self, room, player, shoot):
+        self.airborne = True
+        self.target = player.pos.copy()
+        self.state, self.timer = "dive_up", 0.55
 
     def _enter_phase(self, phase, room):
         self.phase = phase
@@ -864,6 +956,8 @@ class Shine(Enemy):
             options.append("wings")
         if self.cd["halos"] <= 0:
             options.append("halos")
+        if self.cd["dive"] <= 0 and self.simple_t <= 0:
+            options.append("dive")
         if self.phase >= 2:
             if self.cd["papers"] <= 0:
                 options.append("papers")
@@ -901,7 +995,7 @@ class Shine(Enemy):
 
     def _atk_light(self, room, player, shoot):
         n = 5 if self.phase == 1 else 7
-        self._cast(None, 0.6, lambda: self._fan(shoot, n, 0.22, 115 if self.phase == 1 else 125, (255, 240, 150)), 1.4)
+        self._cast(None, 0.6, lambda: self._fan(shoot, n, 0.22, 115 if self.phase == 1 else 125, (255, 240, 150)), 1.0)
 
     def _atk_papers(self, room, player, shoot):
         def fire():
@@ -918,7 +1012,7 @@ class Shine(Enemy):
         warn = pygame.Rect(ROOM_X, y, ROOM_W, WING_BAND)
         life = (ROOM_W + 140) / WING_SPEED + 0.1
         room.hazards.append(Hazard(start, 2, 1.3, life, (WING_SPEED if left else -WING_SPEED, 0), warn, "wing"))
-        self._cast("Взмах крыла", 0.9, None, 1.2)
+        self._cast("Взмах крыла", 0.9, None, 0.9)
 
     def _atk_laser(self, room, player, shoot):
         count = (1, 2, 3)[self.phase - 1]
@@ -929,7 +1023,7 @@ class Shine(Enemy):
             offs = {1: (0,), 2: (-0.7, 0.7), 3: (-0.9, 0.0, 0.9)}[count]
             for off in offs:
                 room.hazards.append(Laser(self.pos, base + off, 1.0, 0.4, 12, 2))
-        self._cast("Луч", 0.4, fire, 1.9)
+        self._cast("Луч", 0.4, fire, 1.4)
 
     def _atk_halos(self, room, player, shoot):
         def fire():
@@ -940,7 +1034,7 @@ class Shine(Enemy):
                 p.y = max(ROOM_Y + 20, min(ROOM_Y + ROOM_H - 20, p.y))
                 room.hazards.append(Hazard((p.x - 22, p.y - 22, 44, 44), 1, 1.1, 0.05, kind="drop"))
                 self.delayed.append([1.1, lambda p=p: self._ring(p, shoot)])
-        self._cast(None, 0.4, fire, 1.6)
+        self._cast(None, 0.4, fire, 1.2)
 
     def _ring(self, p, shoot):
         off = random.uniform(0, math.tau)
@@ -996,7 +1090,20 @@ class Shine(Enemy):
         t = pygame.time.get_ticks()
         blink = int(t / 90) % 2
         cx, cy = int(self.pos.x + off.x), int(self.pos.y + off.y) + int(math.sin(t / 300) * 3)
+        if self.airborne:   # тень на земле и метка приземления (последние 0.45 с — зафиксирована)
+            shadow = pygame.Rect(0, 0, 38, 12)
+            shadow.center = (cx, int(self.pos.y + off.y) + 14)
+            pygame.draw.ellipse(surf, (20, 10, 30), shadow)
+            locked = self.state == "dive_air" and self.timer <= 0.45
+            mx, my = int(self.target.x + off.x), int(self.target.y + off.y)
+            if locked or blink:
+                pygame.draw.circle(surf, (255, 60, 60) if locked else (255, 200, 80), (mx, my), 42, 3 if locked else 1)
+        cy -= int(self.rise)
         img = sprites.white(self.sprite) if self.hurt_t > 0 or (self.state == "roar" and blink) else sprites.get(self.sprite, self.flip)
+        if self.dodge_t > 0:   # лёгкий шлейф при уворачивании
+            ghost = img.copy()
+            ghost.set_alpha(110)
+            surf.blit(ghost, ghost.get_rect(center=(cx - int(self.dodge_vec.x * 14), cy - int(self.dodge_vec.y * 14))))
         surf.blit(img, img.get_rect(center=(cx, cy)))
         # радужка и зрачок большого глаза следят за игроком; цвет зависит от фазы
         from ..sprites import SHINE_IRIS

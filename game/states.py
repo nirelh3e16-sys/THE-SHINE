@@ -6,6 +6,8 @@ import pygame
 
 from .ui.menus import Menu
 from .settings import PUBLISHER
+from .systems.characters import progress as char_progress
+from .world.zones import ZONES
 from .ui.text import draw_text, wrap
 from .settings import GAME_W, GAME_H
 
@@ -412,3 +414,112 @@ class CreditsState:
         for i, line in enumerate(CREDITS_LINES):
             big = i == 0
             draw_text(surf, line, (GAME_W // 2, int(self.y + i * 20)), "gold" if big else "white", 20 if big else 12, "center")
+
+
+class CharacterSelectState:
+    """Выбор персонажа: открытые доступны, закрытые показывают условие открытия."""
+
+    def __init__(self, game):
+        self.game = game
+        self.ids = list(game.characters)
+        self.unlocked = set(game.unlocked_chars())
+        self.sel = max(0, self.ids.index(game.selected_char)) if game.selected_char in self.ids else 0
+
+    # --- вспомогательное ---
+    def _row_rect(self, i):
+        return pygame.Rect(14, 44 + i * 36, 200, 32)
+
+    def _stats(self, char):
+        st = self.game.data.items.stats(char["start_items"], char["mods"])
+        speed = st["speed"] / 105.0
+        label = "медленный" if speed < 0.9 else "быстрый" if speed > 1.1 else "обычный"
+        return int(round(st["max_hp"])) / 2, label
+
+    def _confirm(self):
+        cid = self.ids[self.sel]
+        if cid in self.unlocked:
+            self.game.begin_run(cid)
+
+    # --- события ---
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.game.go_menu()
+            elif event.key in (pygame.K_UP, pygame.K_w, pygame.K_LEFT, pygame.K_a):
+                self.sel = (self.sel - 1) % len(self.ids)
+            elif event.key in (pygame.K_DOWN, pygame.K_s, pygame.K_RIGHT, pygame.K_d):
+                self.sel = (self.sel + 1) % len(self.ids)
+            elif event.key in (pygame.K_RETURN, pygame.K_e, pygame.K_SPACE):
+                self._confirm()
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hasattr(event, "pos_game"):
+            for i in range(len(self.ids)):
+                if self._row_rect(i).collidepoint(event.pos_game):
+                    if i == self.sel:
+                        self._confirm()
+                    self.sel = i
+                    break
+
+    def update(self, dt):
+        pass
+
+    # --- отрисовка ---
+    def draw(self, surf):
+        g = self.game
+        surf.fill((18, 12, 32))
+        draw_text(surf, "ВЫБОР ПЕРСОНАЖА", (GAME_W // 2, 8), "gold", 16, "midtop")
+        for i, cid in enumerate(self.ids):
+            char = g.characters[cid]
+            rect = self._row_rect(i)
+            locked = cid not in self.unlocked
+            sel = i == self.sel
+            pygame.draw.rect(surf, (40, 28, 66) if sel else (26, 18, 44), rect, border_radius=4)
+            pygame.draw.rect(surf, (255, 215, 90) if sel else (80, 64, 110), rect, 1, border_radius=4)
+            icon = g.sprites.get("player_" + cid)
+            icon = g.sprites.white("player_" + cid) if locked else icon
+            if locked:
+                icon = icon.copy()
+                icon.fill((60, 50, 90, 255), special_flags=pygame.BLEND_RGBA_MIN)
+            scale = min(1.0, 26 / max(icon.get_width(), icon.get_height()))
+            icon = pygame.transform.scale(icon, (max(1, int(icon.get_width() * scale)), max(1, int(icon.get_height() * scale))))
+            surf.blit(icon, icon.get_rect(center=(rect.x + 18, rect.centery)))
+            draw_text(surf, "???" if locked else char["name"], (rect.x + 40, rect.centery), "grey" if locked else ("gold" if sel else "white"), 12, "midleft")
+        # правая панель — подробности выбранного
+        cid = self.ids[self.sel]
+        char = g.characters[cid]
+        locked = cid not in self.unlocked
+        panel = pygame.Rect(232, 44, GAME_W - 246, 212)
+        pygame.draw.rect(surf, (26, 18, 44), panel, border_radius=4)
+        pygame.draw.rect(surf, (110, 90, 150), panel, 1, border_radius=4)
+        big = g.sprites.get("player_" + cid)
+        if locked:
+            big = g.sprites.white("player_" + cid).copy()
+            big.fill((60, 50, 90, 255), special_flags=pygame.BLEND_RGBA_MIN)
+        big = pygame.transform.scale(big, (big.get_width() * 3, big.get_height() * 3))
+        surf.blit(big, big.get_rect(center=(panel.x + 44, panel.y + 52)))
+        if locked:
+            kills, need = char_progress(char, g.save.data)
+            boss = ZONES[[z for z in ZONES if ZONES[z].get("boss") == char["unlock"]["boss"]][0]]["boss_name"].title()
+            draw_text(surf, "ЗАКРЫТО", (panel.x + 96, panel.y + 14), "red", 13)
+            for i, line in enumerate(wrap(f"Победи босса «{boss}» {need} раз.", panel.width - 108, 11)):
+                draw_text(surf, line, (panel.x + 96, panel.y + 34 + i * 13), "white", 11)
+            draw_text(surf, f"Прогресс: {min(kills, need)}/{need}", (panel.x + 96, panel.y + 66), "gold", 11)
+            return
+        hearts, speed = self._stats(char)
+        draw_text(surf, char["name"], (panel.x + 96, panel.y + 12), "gold", 14)
+        draw_text(surf, f"Сердца: {hearts:g}   Скорость: {speed}", (panel.x + 96, panel.y + 32), "white", 10)
+        traits = []
+        if "ghost" in char["traits"]:
+            traits.append("проходит сквозь блоки")
+        if "gravity_immune" in char["traits"]:
+            traits.append("гравитация не действует")
+        if char["scale"] > 1.0:
+            traits.append("большой")
+        if traits:
+            draw_text(surf, ", ".join(traits).capitalize(), (panel.x + 96, panel.y + 46), "green", 10)
+        for i, line in enumerate(wrap(char["desc"], panel.width - 16, 10)):
+            draw_text(surf, line, (panel.x + 8, panel.y + 96 + i * 12), "grey", 10)
+        draw_text(surf, "Стартовые предметы:" if char["start_items"] else "Стартовых предметов нет", (panel.x + 8, panel.y + 148), "gold", 10)
+        for i, item_id in enumerate(char["start_items"]):
+            surf.blit(g.sprites.icon(item_id), (panel.x + 8, panel.y + 164 + i * 16))
+            draw_text(surf, g.data.items.items[item_id].name, (panel.x + 28, panel.y + 164 + i * 16), "white", 10)
+        draw_text(surf, "Enter — начать, Esc — назад", (GAME_W // 2, GAME_H - 6), "grey", 9, "midbottom")

@@ -8,6 +8,8 @@ from .collision import circles_overlap, circle_rect_overlap
 from .entities.player import Player
 from .entities.projectile import Projectile
 from .systems import combat
+from .systems import characters as char_logic
+from .systems.statsview import build_stat_rows
 from .systems.events import apply_effects, can_choose
 from .systems.morality import Morality, TESTIMONIES
 from .ui.dialogue import DialogueBox
@@ -36,7 +38,9 @@ class PlayState:
             raise ValueError("сохранение старого формата")
         self.seed = snapshot["seed"] if snapshot else (
             self.cfg["seed"] if self.cfg["seed"] is not None else random.randrange(1 << 30))
-        self.player = Player(self.db)
+        char_id = snapshot.get("char", char_logic.DEFAULT_ID) if snapshot else game.selected_char
+        self.char = game.characters.get(char_id) or game.characters[char_logic.DEFAULT_ID]
+        self.player = Player(self.db, self.char)
         self.morality = Morality(self.seed, game.save.data["testimonies"])
         self.notes = Notifications()
         self.pshots, self.eshots = [], []
@@ -55,6 +59,10 @@ class PlayState:
         self.slow_t = self.freeze_t = 0.0
         self.soldier_t, self.clock_t = 1.4, 14.0
         self.burger_t, self.feather_t = random.uniform(15, 25), random.uniform(30, 50)
+        if not snapshot:  # стартовые предметы персонажа (при продолжении они уже есть в сохранении)
+            for item_id in self.char["start_items"]:
+                self.give_item(item_id, silent=True)
+            self.player.hp = self.player.max_hp
         self.cutscene = False
         self.chain = []
         self.on_dialogue_end = None
@@ -63,6 +71,7 @@ class PlayState:
         self.secret_ready = False
         self.cheated = False       # тест-меню использовалось: результаты забега не сохраняются
         self.debug = None
+        self.stats_open = False    # меню статистики персонажа (F4 + 2)
         self.cards = None          # меню выбора карточки: {"options": [...], "sel": 0, "then": fn}
         self.stack = []  # внешние уровни, пока игрок внутри дома
         self._setup_zone(snapshot["zone"] if snapshot else 0, snapshot.get("zone_pool") if snapshot else None)
@@ -212,7 +221,7 @@ class PlayState:
         p = self.player
         dungeon, rooms = self._outer()
         return {
-            "seed": self.seed, "zone": self.zone_index, "zone_pool": list(self.zone_pool),
+            "seed": self.seed, "char": self.char["id"], "zone": self.zone_index, "zone_pool": list(self.zone_pool),
             "pos": list(dungeon.pos), "visited": [list(v) for v in dungeon.visited],
             "cleared": [list(pos) for pos, r in rooms.items() if r.cleared and r.kind in ("combat", "boss")],
             "taken": sorted(self.taken), "hp": p.hp, "coins": p.coins, "items": list(p.inv.items),
@@ -267,7 +276,26 @@ class PlayState:
         self.game.save.write()
 
     # --- события ввода ---
+    def toggle_stats(self):
+        self.stats_open = not self.stats_open
+
+    def _draw_stats(self, surf):
+        veil = pygame.Surface((GAME_W, GAME_H), pygame.SRCALPHA)
+        veil.fill((8, 4, 20, 225))
+        surf.blit(veil, (0, 0))
+        _draw_text(surf, "СТАТИСТИКА ПЕРСОНАЖА", (GAME_W // 2, 8), "gold", 14, "midtop")
+        y = 32
+        for label, value in build_stat_rows(self.player, self.rooms_cleared):
+            _draw_text(surf, label, (60, y), "grey", 11)
+            _draw_text(surf, value, (GAME_W - 60, y), "white", 11, "topright")
+            y += 15
+        _draw_text(surf, "Esc или F4 + 2 — закрыть", (GAME_W // 2, GAME_H - 6), "grey", 9, "midbottom")
+
     def handle_event(self, event):
+        if self.stats_open:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.stats_open = False
+            return
         if self.debug is not None:
             self._debug_event(event)
             return
@@ -551,6 +579,7 @@ class PlayState:
         self.room.enter(self.hp_scale())
         self.player.pos = pygame.Vector2(CENTER)
         self.player.knock.update(0, 0)
+        self.player.cur_vel.update(0, 0)
         self.room_hit = False
 
     def _resolve_event(self, ev, prop, choice):
@@ -695,7 +724,7 @@ class PlayState:
                     fn, self.on_dialogue_end = self.on_dialogue_end, None
                     fn()
             return
-        if self.paused or self.overlay or self.debug is not None or self.cards is not None:
+        if self.paused or self.overlay or self.debug is not None or self.cards is not None or self.stats_open:
             return
         if self.dying > 0:
             self.dying -= dt
@@ -726,7 +755,7 @@ class PlayState:
         if aim.length_squared() > 4:
             p.aim = aim.normalize()
         room.update_dynamic(dt, p.pos)
-        p.update(dt, move, room, room.drift())
+        p.update(dt, move, room, None if p.gravity_immune else room.drift())
         if pygame.mouse.get_pressed()[0] and p.shoot_cd <= 0 and p.dodge_t <= 0:
             if len(self.pshots) < self.cfg["max_player_projectiles"]:
                 self.pshots.extend(combat.build_player_shots(p, p.aim))
@@ -736,6 +765,7 @@ class PlayState:
         # враги и снаряды
         scale = 0.0 if self.freeze_t > 0 else (0.45 if self.slow_t > 0 else 1.0)
         edt = dt * scale
+        room.player_shots = self.pshots
         drift = room.drift()
         for e in room.enemies:
             if drift.length_squared() and e.spawn_t <= 0 and not getattr(e, "is_boss", False):
@@ -897,6 +927,18 @@ class PlayState:
         if getattr(e, "is_boss", False):
             self.on_boss_dead(e)
 
+    def _count_boss_kill(self):
+        """Считает победу над боссом (для открытия персонажей). Тест-режим не засчитывается."""
+        if self.cheated:
+            return
+        game = self.game
+        for char_id in char_logic.record_boss_kill(game.save.data, game.characters, self.zone["boss"]):
+            name = game.characters[char_id]["name"]
+            self.notes.push(f"ОТКРЫТ ПЕРСОНАЖ: {name}!", "gold", 6)
+            game.steam.unlock("CHAR_" + char_id.upper())
+            self.sfx("story")
+        game.save.write()
+
     def _boss_rewards(self, room, silent=False):
         from .world.room import Prop
         if self.zone.get("arena"):
@@ -918,6 +960,7 @@ class PlayState:
         self.room.cancel_dynamic()
         self.inverted_t, self.hud_layout = 0.0, 0
         self.secret_ready = self.morality.secret_unlocked()
+        self._count_boss_kill()
         self.room.spawn_requests.clear()
         for other in self.room.enemies:  # клоны, призванные существа и т. п. исчезают вместе с боссом
             if other is not boss and not other.dead:
@@ -987,6 +1030,7 @@ class PlayState:
             self.room.enter(self.hp_scale())
             self.player.pos = self.room.door_pos(OPP[t["dir"]])
             self.player.knock.update(0, 0)
+            self.player.cur_vel.update(0, 0)
             self.pshots.clear()
             self.eshots.clear()
             self.room_hit = False
@@ -1053,6 +1097,8 @@ class PlayState:
             self.pause_menu.draw(surf)
         if self.cards is not None:
             self._draw_cards(surf)
+        if self.stats_open:
+            self._draw_stats(surf)
         if self.debug is not None:
             self._draw_debug(surf)
 

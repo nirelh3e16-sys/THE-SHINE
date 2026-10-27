@@ -47,6 +47,8 @@ class Enemy:
         self.timer = random.uniform(0.5, 1.5)
         self.dir = pygame.Vector2(1, 0)
         self.flip = False
+        self.mv = pygame.Vector2()   # текущая скорость (инерция)
+        self._moved = False
         self.strafe = random.choice((-1, 1))
         self.angle = random.uniform(0, math.tau)
 
@@ -64,6 +66,15 @@ class Enemy:
         if self.hp <= 0:
             self.dead = True
         return True
+
+    INERTIA = 5.0   # чем больше, тем быстрее моб набирает скорость и меняет направление
+
+    def _move(self, desired, dt):
+        """Движение с небольшой инерцией: скорость плавно стремится к желаемой."""
+        rate = max(30.0, self.speed) * self.INERTIA
+        self.mv = self.mv.move_towards(desired, rate * dt)
+        self.pos += self.mv * dt
+        self._moved = True
 
     def _common(self, dt, room):
         self.hurt_t = max(0.0, self.hurt_t - dt)
@@ -86,8 +97,9 @@ class Enemy:
         direction = to_player / dist if dist > 0 else pygame.Vector2(1, 0)
         self.flip = direction.x < 0
         beh = self.data["behavior"]
+        self._moved = False
         if beh == "chase":
-            self.pos += direction * self.speed * dt
+            self._move(direction * self.speed, dt)
         elif beh == "spin":  # вращающаяся струя: читается заранее, не требует предупреждения
             self.timer -= dt
             if self.timer <= 0:
@@ -98,7 +110,7 @@ class Enemy:
                 self.timer = self.data.get("fire", 0.38)
         elif beh == "shoot":
             if self.speed > 0:  # стрелок ходит боком относительно игрока
-                self.pos += pygame.Vector2(-direction.y, direction.x) * self.strafe * self.speed * dt
+                self._move(pygame.Vector2(-direction.y, direction.x) * self.strafe * self.speed, dt)
             self.timer -= dt
             if self.timer <= 0:
                 self.strafe = -self.strafe
@@ -115,6 +127,8 @@ class Enemy:
             self._burst(dt, dist, direction, shoot)
         elif beh == "blink":
             self._blink(dt, room, player, direction, shoot)
+        if not self._moved:   # стоит/целится/рывок — накопленная скорость сбрасывается
+            self.mv.update(0, 0)
         room.confine(self.pos, self.radius)
 
     def _blink(self, dt, room, player, direction, shoot):
@@ -151,7 +165,7 @@ class Enemy:
         if self.state == "idle":
             perp = pygame.Vector2(-direction.y, direction.x)
             radial = 0.4 if dist > 170 else (-0.4 if dist < 100 else 0.0)
-            self.pos += (perp * self.strafe * 0.8 + direction * radial) * self.speed * dt
+            self._move((perp * self.strafe * 0.8 + direction * radial) * self.speed, dt)
             if self.timer <= 0:
                 self.state, self.timer = "windup", 0.55
         elif self.state == "windup":
@@ -170,7 +184,7 @@ class Enemy:
         self.timer -= dt
         if self.state == "idle":  # кружит рядом
             perp = pygame.Vector2(-direction.y, direction.x)
-            self.pos += (perp * 0.8 + direction * 0.2) * self.speed * dt
+            self._move((perp * 0.8 + direction * 0.2) * self.speed, dt)
             if self.timer <= 0:
                 self.state, self.timer = "windup", 0.65
                 self.dir = direction.copy()
