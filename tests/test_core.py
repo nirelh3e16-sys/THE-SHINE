@@ -80,7 +80,7 @@ class LayoutTests(unittest.TestCase):
             self.assertIn(kind, enemies)
 
     def test_zone_order(self):
-        self.assertEqual(ZONE_ORDER, ["forest", "suburbs", "city", "center", "shine"])
+        self.assertEqual(ZONE_ORDER, ["forest", "suburbs", "city", "center", "shine", "hell"])
 
     def test_center_zone_music_and_boss_keys(self):
         z = ZONES["center"]
@@ -92,7 +92,7 @@ class LayoutTests(unittest.TestCase):
     def test_all_music_keys_have_files_declared(self):
         import re
         src = (Path(__file__).resolve().parent.parent / "game" / "systems" / "audio.py").read_text(encoding="utf-8")
-        for key in ("combat", "calm", "boss", "suburb_combat", "city_combat", "center_combat", "chaos_boss", "shine_boss", "menu"):
+        for key in ("combat", "calm", "boss", "suburb_combat", "city_combat", "center_combat", "chaos_boss", "shine_boss", "hell_combat", "hell_boss", "menu"):
             self.assertRegex(src, rf'"{key}": "[^"]+\.mp3"')
 
     def test_final_arena_is_single_boss_room(self):
@@ -191,9 +191,13 @@ class ItemTests(unittest.TestCase):
         self.assertEqual(sorted(self.db.card_options(owned, random.Random(1))), ["broom", "old_tv"])
         self.assertEqual(self.db.card_options(list(self.db.items), random.Random(1)), [])
 
-    def test_exactly_one_active_item_has_cooldown(self):
+    def test_active_items_have_cooldown_or_kill_recharge(self):
         actives = [i for i in self.db.items.values() if i.active]
-        self.assertTrue(actives and all(a.active["cooldown"] > 0 for a in actives))
+        self.assertGreaterEqual(len(actives), 4)   # бомба, граната, аптечка, телефон
+        for a in actives:
+            by_time = a.active.get("cooldown", 0) > 0
+            by_kills = a.active.get("recharge") == "kills" and a.active.get("kills", 0) > 0
+            self.assertTrue(by_time or by_kills, a.id)
 
 
 class SaveTests(unittest.TestCase):
@@ -345,7 +349,7 @@ class CharacterTests(unittest.TestCase):
         return self.db.stats(c["start_items"], c["mods"])
 
     def test_five_plus_default_characters(self):
-        self.assertEqual(list(self.chars), ["rob", "lumberjack", "tom", "bigshot", "glitch", "angel"])
+        self.assertEqual(list(self.chars), ["rob", "lumberjack", "tom", "bigshot", "glitch", "angel", "devil"])
         self.assertIsNone(self.chars["rob"]["unlock"])
 
     def test_hearts_match_design(self):
@@ -356,6 +360,7 @@ class CharacterTests(unittest.TestCase):
         self.assertEqual(hearts["bigshot"], 2)
         self.assertEqual(hearts["glitch"], 1)
         self.assertEqual(hearts["angel"], 3)
+        self.assertEqual(hearts["devil"], 10)
 
     def test_speed_and_size(self):
         base = BASE_STATS["speed"]
@@ -370,6 +375,7 @@ class CharacterTests(unittest.TestCase):
         self.assertEqual(self.chars["bigshot"]["start_items"], ["toy_soldier", "pressure_kettle"])
         self.assertEqual(self.chars["glitch"]["start_items"], ["old_tv", "pressure_kettle"])
         self.assertEqual(self.chars["angel"]["start_items"], ["shotgun"])
+        self.assertEqual(self.chars["devil"]["start_items"], ["compact_imp", "anchor", "angel_wings"])
 
     def test_angel_traits(self):
         self.assertEqual(set(self.chars["angel"]["traits"]), {"ghost", "gravity_immune"})
@@ -389,8 +395,17 @@ class CharacterTests(unittest.TestCase):
 
     def test_each_character_has_own_boss(self):
         bosses = [c["unlock"]["boss"] for c in self.chars.values() if c["unlock"]]
-        self.assertEqual(bosses, ["lumberjack", "neighbor", "mayor", "chaos", "shine"])
-        self.assertTrue(all(c["unlock"]["kills"] == 10 for c in self.chars.values() if c["unlock"]))
+        self.assertEqual(bosses, ["lumberjack", "neighbor", "mayor", "chaos", "shine", "imp"])
+        self.assertTrue(all(c["unlock"]["kills"] == 10 for c in self.chars.values() if c["unlock"] and c["id"] != "devil"))
+        self.assertEqual(self.chars["devil"]["unlock"]["kills"], 1)   # Дьявол открывается с первой победы над Бесом
+
+    def test_devil_is_fast_and_unlocks_after_first_imp_kill(self):
+        from game.systems.characters import record_boss_kill, is_unlocked
+        self.assertGreater(self._stats("devil")["speed"], self._stats("glitch")["speed"])
+        save = {"boss_kills": {}}
+        self.assertFalse(is_unlocked(self.chars["devil"], save))
+        self.assertEqual(record_boss_kill(save, self.chars, "imp"), ["devil"])
+        self.assertTrue(is_unlocked(self.chars["devil"], save))
 
     def test_unlock_all_flag(self):
         from game.systems.characters import unlocked_ids
@@ -401,12 +416,91 @@ class CharacterTests(unittest.TestCase):
         self.assertIn("shotgun", self.db.items["shotgun"].flags)
         self.assertGreater(self.db.stats(["shotgun"])["fire_delay"], BASE_STATS["fire_delay"])
 
+    def test_new_items_exist_with_expected_behaviour(self):
+        items = self.db.items
+        for item_id in ("grenade", "medkit", "anchor", "angel_wings", "bat", "smg", "broken_phone", "compact_imp"):
+            self.assertIn(item_id, items)
+        self.assertEqual(items["grenade"].active["cooldown"], 50.0)
+        self.assertEqual(items["grenade"].active["damage"], 50.0)
+        self.assertEqual(items["grenade"].active["radius"] * 2 / 16, 5.0)          # диаметр 5 блоков
+        self.assertEqual(items["medkit"].active["kills"], 5)
+        self.assertEqual(set(items["angel_wings"].flags), {"ghost", "gravity_immune"})
+        self.assertLess(self.db.stats(["smg"])["fire_delay"], BASE_STATS["fire_delay"] / 2)   # скорострельный
+        self.assertIn("anchor", items["anchor"].flags)
+        self.assertIn("imp", items["compact_imp"].flags)
+
     def test_steam_is_optional(self):
         from game.steam import Steam
         s = Steam(enabled=False)
         self.assertFalse(s.available)
         s.update()
         self.assertFalse(s.unlock("ANYTHING"))
+
+
+class AnchorTests(unittest.TestCase):
+    def test_reach_grows_with_hold_and_is_capped_at_ten_blocks(self):
+        from game.systems.anchor import reach_for_hold, MAX_REACH, MIN_REACH
+        self.assertEqual(MAX_REACH, 160.0)
+        self.assertEqual(reach_for_hold(0), MIN_REACH)
+        self.assertLess(reach_for_hold(0.3), reach_for_hold(0.9))
+        self.assertEqual(reach_for_hold(5.0), MAX_REACH)
+
+    def test_orbit_release_fly_return(self):
+        from game.systems.anchor import Anchor, reach_for_hold
+        a = Anchor()
+        player = (100.0, 100.0)
+        for _ in range(30):
+            a.holding(0.016, player)
+        self.assertEqual(a.state, "orbit")
+        dist = ((a.pos[0] - player[0]) ** 2 + (a.pos[1] - player[1]) ** 2) ** 0.5
+        self.assertAlmostEqual(dist, 28.0, places=3)                       # вертится вокруг игрока
+        hold = a.hold
+        self.assertTrue(a.release((1.0, 0.0)))
+        self.assertEqual(a.state, "fly")
+        first_pass = a.pass_id
+        start = a.pos
+        for _ in range(400):
+            a.step(0.016, player)
+            if a.state == "return":
+                break
+        self.assertEqual(a.state, "return")
+        self.assertAlmostEqual(a.pos[0] - start[0], reach_for_hold(hold), delta=10)
+        self.assertGreater(a.pass_id, first_pass)                           # на возврате цель можно бить снова
+        for _ in range(400):
+            a.step(0.016, player)
+            if a.state == "idle":
+                break
+        self.assertEqual(a.state, "idle")
+        self.assertGreater(a.cooldown, 0)
+
+    def test_longer_hold_flies_farther(self):
+        from game.systems.anchor import Anchor
+        def distance(hold_frames):
+            a = Anchor()
+            for _ in range(hold_frames):
+                a.holding(0.016, (0.0, 0.0))
+            a.release((1.0, 0.0))
+            return a.target_dist
+        self.assertGreater(distance(60), distance(10))
+
+
+class InventoryKillRechargeTests(unittest.TestCase):
+    def test_medkit_style_recharge_by_kills(self):
+        from game.systems.inventory import Inventory
+        db = ItemDatabase.from_file()
+        inv = Inventory()
+        inv.add(db.items["medkit"])
+        self.assertTrue(inv.can_use_active())
+        inv.start_kill_recharge(5)
+        self.assertFalse(inv.can_use_active())
+        for _ in range(4):
+            inv.register_kill()
+        self.assertFalse(inv.can_use_active())
+        inv.register_kill()
+        self.assertTrue(inv.can_use_active())
+        inv.tick(100)    # время на такую перезарядку не влияет
+        inv.register_kill()
+        self.assertEqual(inv.kills_left, 0)
 
 
 class StatsViewTests(unittest.TestCase):
@@ -451,7 +545,7 @@ class RoomTests(unittest.TestCase):
         from game.world.room import Room
         from game.world.zones import ZONES
         data = SimpleNamespace(items=ItemDatabase.from_file(), enemies=load_enemy_defs(), events=load_events())
-        for zid in ("forest", "suburbs", "city", "center"):
+        for zid in ("forest", "suburbs", "city", "center", "hell"):
             for seed in range(50):
                 d = Dungeon(seed, 8, sorted(data.items.items), extra_kinds=ZONES[zid].get("extra_kinds", ()))
                 for pos, spec in d.specs.items():
@@ -654,6 +748,92 @@ class BehaviorTests(unittest.TestCase):
         for _ in range(30):
             boss.update(0.016, room, player, lambda *a, **k: None)
         self.assertGreater(boss.pos.distance_to(player.pos), start)
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class HellTests(unittest.TestCase):
+    def test_imp_is_stronger_than_shine(self):
+        from game.entities.boss import IMP, SHINE
+        self.assertGreater(IMP["hp"], SHINE["hp"])
+
+    def test_imp_sprites_have_same_size_as_shine_style(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.sprites import make_imp_boss, make_shine, IMP_IRIS
+        sizes = {make_imp_boss(v).get_size() for v in (1, 2, 3)}
+        self.assertEqual(len(sizes), 1)
+        self.assertEqual(sizes, {make_shine(1).get_size()})     # тот же размер и форма: глаз с крыльями
+        self.assertEqual(set(IMP_IRIS), {1, 2, 3})
+
+    def test_arena_clamps_player_and_enemies_to_platform(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        import pygame
+        from game.entities.enemy import load_enemy_defs
+        from game.world.dungeon import RoomSpec
+        from game.world.room import Room
+        data = SimpleNamespace(items=ItemDatabase.from_file(), enemies=load_enemy_defs(), events=load_events())
+        room = Room(RoomSpec((0, 0), "boss", {"N": (0, -1)}, 3), ZONES["hell"], 1, data, [], "hell:")
+        platform = pygame.Rect(110, 64, 260, 144)
+        room.set_arena(platform)
+        pos = pygame.Vector2(10, 10)
+        room.clamp_player(pos, 5)
+        self.assertTrue(platform.collidepoint(pos))
+        far = pygame.Vector2(470, 260)
+        self.assertTrue(room.confine(far, 6))
+        self.assertTrue(platform.collidepoint(far))
+        self.assertIsNone(room.check_exit(pygame.Vector2(240, 5)))      # из арены выйти нельзя
+
+    def test_arena_shrinks_after_warning_and_keeps_minimum_size(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        import pygame
+        from game.entities.enemy import load_enemy_defs
+        from game.world.dungeon import RoomSpec
+        from game.world.room import Room
+        data = SimpleNamespace(items=ItemDatabase.from_file(), enemies=load_enemy_defs(), events=load_events())
+        room = Room(RoomSpec((0, 0), "boss", {}, 3), ZONES["hell"], 1, data, [], "hell:")
+        room.set_arena(pygame.Rect(110, 64, 260, 144))
+        before = room.arena.copy()
+        self.assertTrue(room.begin_shrink())
+        self.assertEqual(room.arena, before)                              # сначала только предупреждение
+        room.update_dynamic(2.0, pygame.Vector2(240, 136))
+        self.assertLess(room.arena.w, before.w)
+        for _ in range(10):
+            room.update_dynamic(2.0, pygame.Vector2(240, 136))
+            room.begin_shrink()
+        self.assertGreaterEqual(room.arena.w, 180)
+        self.assertGreaterEqual(room.arena.h, 110)
+
+    def test_imp_hovers_outside_platform_and_has_cooldowns(self):
+        import pygame
+        from game.entities.boss import Imp
+        room = BehaviorTests.FakeRoom()
+        room.arena, room.arena_warn_t = pygame.Rect(110, 64, 260, 144), None
+        boss = Imp(pygame.Vector2(240, 30))
+        boss.spawn_t = 0
+        boss.timer = 99
+        player = SimpleNamespace(pos=pygame.Vector2(240, 136), temp_buffs=[])
+        for _ in range(200):
+            boss.update(0.016, room, player, lambda *a, **k: None)
+        self.assertFalse(room.arena.collidepoint(boss.pos))               # парит над лавой, а не на платформе
+        boss.timer = 0
+        random.seed(2)
+        used = set()
+        for _ in range(80):
+            boss.state, boss.timer = "idle", 0
+            room.hazards.clear()
+            boss._choose(room, player, lambda *a, **k: None)
+            used.add(boss.last)
+        self.assertTrue({"fire", "breath", "geyser", "swoop"} <= used)
+        self.assertTrue(all(boss.cd[k] > 0 for k in ("breath", "geyser") if k in used))
+
+    def test_player_wings_item_gives_ghost_and_gravity_immunity(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.entities.player import Player
+        db = ItemDatabase.from_file()
+        p = Player(db)
+        self.assertFalse(p.ghost)
+        p.inv.add(db.items["angel_wings"])
+        p.recompute()
+        self.assertTrue(p.ghost and p.gravity_immune)
 
 
 if __name__ == "__main__":

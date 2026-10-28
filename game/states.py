@@ -45,7 +45,7 @@ def draw_shine(surf, cx, cy, t):
 
 
 ENEMY_SPRITE_OF_BOSS = {"lumberjack": "lumberjack", "neighbor": "neighbor_boss", "mayor": "mayor",
-                        "chaos": "chaos", "shine": "shine"}
+                        "chaos": "chaos", "shine": "shine", "imp": "imp"}
 
 
 class MenuState:
@@ -62,7 +62,7 @@ class MenuState:
         from .world.room import Room
         from .world.zones import ZONES
         rng = random.Random()
-        zone_id = rng.choice(("forest", "suburbs", "city", "center", "shine"))
+        zone_id = rng.choice(("forest", "suburbs", "city", "center", "shine", "hell"))
         zone = ZONES[zone_id]
         spec = RoomSpec((0, 0), "start", {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0)}, 0)
         room = Room(spec, zone, rng.random(), self.game.data, [], "menu:")
@@ -296,7 +296,9 @@ class EndScreen:
                   (GAME_W // 2, 70), "white", 11, "midtop")
         draw_text(surf, f"THE SHINE: «{self.verdict}»", (GAME_W // 2, 95), "gold", 12, "midtop")
         if self.won:
-            for i, line in enumerate(wrap("Хаос повержен, но это ещё не конец. Предательство и финальный бой с THE SHINE пока не добавлены в эту версию.", 360)):
+            text = {"hell": "Бес повержен. Ад не любит проигрывать, но дверь наверх теперь открыта. Дьявол ждёт тебя среди персонажей."}.get(
+                self.play.zone["id"], "Босс повержен, но это ещё не конец испытания.")
+            for i, line in enumerate(wrap(text, 360)):
                 draw_text(surf, line, (GAME_W // 2, 120 + i * 13), "grey", 10, "midtop")
         else:
             draw_text(surf, "«Ожидаемо».", (GAME_W // 2, 120), "grey", 11, "midtop")
@@ -427,7 +429,7 @@ class CharacterSelectState:
 
     # --- вспомогательное ---
     def _row_rect(self, i):
-        return pygame.Rect(14, 44 + i * 36, 200, 32)
+        return pygame.Rect(14, 38 + i * 31, 200, 28)
 
     def _stats(self, char):
         st = self.game.data.items.stats(char["start_items"], char["mods"])

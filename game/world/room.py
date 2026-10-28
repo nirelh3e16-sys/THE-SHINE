@@ -1,4 +1,5 @@
 """Комната во время игры: стены, двери, препятствия, враги, предметы."""
+import math
 import random
 
 import pygame
@@ -12,6 +13,19 @@ from .dungeon import DIRS
 INTERIOR = pygame.Rect(ROOM_X, ROOM_Y, ROOM_W, ROOM_H)
 CENTER = pygame.Vector2(INTERIOR.centerx, INTERIOR.centery)
 DOORWAY_DEPTH = 16
+
+
+_GLOW = None
+
+
+def _fire_glow():
+    """Оранжевое зарево по краям экрана (создаётся один раз)."""
+    global _GLOW
+    if _GLOW is None:
+        _GLOW = pygame.Surface((480, 270), pygame.SRCALPHA)
+        for i in range(10):
+            pygame.draw.rect(_GLOW, (255, 90, 20, 5 + (10 - i) * 4), (i * 5, i * 3, 480 - i * 10, 270 - i * 6), 5)
+    return _GLOW
 
 
 def door_pos(direction):
@@ -54,6 +68,10 @@ class Room:
         self.spec, self.kind, self.zone = spec, spec.kind, zone
         self.ns = ns  # префикс ключей, чтобы разные зоны и дома не пересекались
         self.hazards = []
+        self.arena = None            # Rect платформы (Ад: после обрушения стен комната — озеро лавы с платформой)
+        self.arena_pending = None
+        self.arena_warn_t = None
+        self._cracks, self._veins = [], []
         self.player_shots = []     # заполняется PlayState каждый кадр (боссы смотрят на летящие снаряды)
         self.notices = []          # сообщения боссов для игрока: (текст, цвет)
         self.rule_requests = []    # временные правила боя: ("invert", секунды), ("scramble_ui", 0)
@@ -82,6 +100,8 @@ class Room:
         self._patch = None
         if zone.get("patchwork"):  # комната из кусочков разных мест
             self._patch = [rng.choice(PATCH_PALETTES) for _ in range(4)]
+        if zone.get("burning"):   # трещины в стенах, из которых течёт лава, и жилы на полу
+            self._make_cracks(rng)
         self.door_off = {}
         for d in spec.doors:
             if zone.get("shifted_doors"):
@@ -151,8 +171,9 @@ class Room:
         return result
 
     def _free_spot(self, rng, avoid_dist=90):
+        area = self.arena or pygame.Rect(ROOM_X, ROOM_Y, ROOM_W, ROOM_H)
         for _ in range(60):
-            p = pygame.Vector2(rng.uniform(ROOM_X + 30, ROOM_X + ROOM_W - 30), rng.uniform(ROOM_Y + 30, ROOM_Y + ROOM_H - 30))
+            p = pygame.Vector2(rng.uniform(area.left + 30, area.right - 30), rng.uniform(area.top + 30, area.bottom - 30))
             if any(o.inflate(24, 24).collidepoint(p) for o in self.obstacles):
                 continue
             if all(p.distance_to(self.door_pos(d)) > avoid_dist for d in self.spec.doors):
@@ -221,6 +242,45 @@ class Room:
         self.stumps.append(rect.copy())
         self.obstacles.append(rect.copy())
 
+    def _make_cracks(self, rng):
+        for _ in range(16):
+            side = rng.choice("NSWE")
+            if side in "NS":
+                x = rng.randrange(8, 472)
+                y0, y1 = (ROOM_Y - 2, 3) if side == "N" else (ROOM_Y + ROOM_H + 2, 266)
+                mid = (y0 + y1) // 2
+                pts = [(x, y0), (x + rng.randint(-6, 6), mid), (x + rng.randint(-8, 8), y1)]
+            else:
+                y = rng.randrange(ROOM_Y + 4, ROOM_Y + ROOM_H - 4)
+                x0, x1 = (ROOM_X - 2, 3) if side == "W" else (ROOM_X + ROOM_W + 2, 477)
+                mid = (x0 + x1) // 2
+                pts = [(x0, y), (mid, y + rng.randint(-6, 6)), (x1, y + rng.randint(-8, 8))]
+            self._cracks.append(pts)
+        for _ in range(7):
+            x, y = rng.randrange(ROOM_X + 20, ROOM_X + ROOM_W - 20), rng.randrange(ROOM_Y + 16, ROOM_Y + ROOM_H - 16)
+            pts = [(x, y)]
+            for _ in range(rng.randint(3, 5)):
+                x += rng.randint(-18, 18)
+                y += rng.randint(-12, 12)
+                pts.append((x, y))
+            self._veins.append(pts)
+
+    def set_arena(self, rect):
+        """Стены обрушились: остаётся платформа rect посреди лавы."""
+        self.arena = pygame.Rect(rect)
+        self.arena_pending, self.arena_warn_t = None, None
+        self._bg = None
+
+    def begin_shrink(self, inset_x=24, inset_y=14, warn=1.6, min_size=(180, 110)):
+        """Платформа уменьшается; будущий край заранее мигает красным."""
+        if self.arena is None or self.arena_warn_t is not None:
+            return False
+        new = self.arena.inflate(-2 * inset_x, -2 * inset_y)
+        if new.w < min_size[0] or new.h < min_size[1]:
+            return False
+        self.arena_pending, self.arena_warn_t = new, warn
+        return True
+
     # --- геометрия ---
     def open_doors(self):
         return [] if self.locked else list(self.spec.doors)
@@ -230,6 +290,10 @@ class Room:
 
     def clamp_player(self, pos, r):
         """Ограничение внутри комнаты; через открытые двери можно выйти в проём."""
+        if self.arena is not None:
+            pos.x = max(self.arena.left + r, min(self.arena.right - r, pos.x))
+            pos.y = max(self.arena.top + r, min(self.arena.bottom - r, pos.y))
+            return
         doors = self.open_doors()
         lo_x, hi_x = INTERIOR.left + r, INTERIOR.right - r
         lo_y, hi_y = INTERIOR.top + r, INTERIOR.bottom - r
@@ -247,6 +311,8 @@ class Room:
         pos.y = max(lo_y, min(hi_y, pos.y))
 
     def check_exit(self, pos):
+        if self.arena is not None:
+            return None
         for d in self.open_doors():
             if d == "N" and pos.y < INTERIOR.top - 6:
                 return d
@@ -267,6 +333,11 @@ class Room:
 
     def confine(self, pos, r):
         """Для врагов: держит внутри комнаты и вне препятствий. True при столкновении."""
+        if self.arena is not None:
+            x, y = pos.x, pos.y
+            pos.x = max(self.arena.left + r, min(self.arena.right - r, pos.x))
+            pos.y = max(self.arena.top + r, min(self.arena.bottom - r, pos.y))
+            return x != pos.x or y != pos.y
         moved = self.push_out(pos, r)
         x, y = pos.x, pos.y
         pos.x = max(INTERIOR.left + r, min(INTERIOR.right - r, pos.x))
@@ -274,7 +345,30 @@ class Room:
         return moved or x != pos.x or y != pos.y
 
     # --- отрисовка ---
+    def _build_arena_bg(self):
+        """Озеро лавы и базальтовая платформа посреди него."""
+        bg = pygame.Surface((480, 270))
+        pair = ((255, 96, 22), (236, 74, 16))
+        for ty in range(0, 270, 16):
+            for tx in range(0, 480, 16):
+                bg.fill(pair[((tx // 16) + (ty // 16)) % 2], (tx, ty, 16, 16))
+        for i in range(60):   # тёмные корки и яркие пятна
+            x, y = (i * 97) % 470, (i * 61) % 262
+            bg.fill((200, 50, 12) if i % 2 else (255, 170, 50), (x, y, 6, 3))
+        a = self.arena
+        for ty in range(a.top, a.bottom, 16):
+            for tx in range(a.left, a.right, 16):
+                bg.fill(self.zone["floor"][((tx // 16) + (ty // 16)) % 2], (tx, ty, min(16, a.right - tx), min(16, a.bottom - ty)))
+        for x in range(a.left + 8, a.right - 8, 40):   # жилы лавы в базальте
+            pygame.draw.line(bg, (255, 120, 30), (x, a.top + 6), (x + 10, a.top + 14), 1)
+            pygame.draw.line(bg, (255, 120, 30), (x + 18, a.bottom - 6), (x + 8, a.bottom - 14), 1)
+        pygame.draw.rect(bg, (20, 12, 20), a, 3)
+        pygame.draw.rect(bg, (255, 140, 40), a.inflate(6, 6), 1)
+        return bg
+
     def _build_bg(self):
+        if self.arena is not None:
+            return self._build_arena_bg()
         zone = self.zone
         bg = pygame.Surface((480, 270))
         bg.fill(zone["wall"])
@@ -313,6 +407,12 @@ class Room:
             for y in range(0, 270, 8):
                 for x0, x1 in ((0, ROOM_X), (ROOM_X + ROOM_W, 480)):
                     pygame.draw.line(bg, light if (y // 8) % 2 else dark, (x0, y), (x1 - 1, y))
+        if self._cracks:   # трещины в базальте
+            for pts in self._cracks:
+                pygame.draw.lines(bg, (150, 55, 20), False, pts, 2)
+                pygame.draw.lines(bg, (255, 120, 30), False, pts, 1)
+            for pts in self._veins:
+                pygame.draw.lines(bg, (255, 100, 25), False, pts, 1)
         pygame.draw.rect(bg, (20, 14, 30), INTERIOR.inflate(2, 2), 1)
         for d in self.spec.doors:
             dx, dy = DIRS[d]
@@ -329,7 +429,7 @@ class Room:
         if self._bg is None:
             self._bg = self._build_bg()
         surf.blit(self._bg, (off.x, off.y))
-        if self.locked:  # закрытые двери — доски
+        if self.locked and self.arena is None:  # закрытые двери — доски
             for d in self.spec.doors:
                 dx, dy = DIRS[d]
                 c = self.door_center(d)
@@ -367,6 +467,11 @@ class Room:
         self.pending, self.reshuffle_t, self.modifier = [], None, None
 
     def update_dynamic(self, dt, player_pos):
+        if self.arena_warn_t is not None:
+            self.arena_warn_t -= dt
+            if self.arena_warn_t <= 0:
+                self.arena, self.arena_pending, self.arena_warn_t = self.arena_pending, None, None
+                self._bg = None
         if self.reshuffle_t is not None:
             self.reshuffle_t -= dt
             if self.reshuffle_t <= 0:
@@ -407,8 +512,44 @@ class Room:
             return "СТЕНЫ НЕСТАБИЛЬНЫ"
         return None
 
+    def draw_lava(self, surf, off, t):
+        """Анимация лавы: потёки из трещин в стенах или волны на озере."""
+        if not self.zone.get("burning"):
+            return
+        if self.arena is not None:
+            a = self.arena
+            for row in range(0, 270, 10):
+                for col in range(0, 480, 60):
+                    x = col + math.sin(t * 1.4 + row * 0.3) * 14 + (row % 20)
+                    if not a.inflate(8, 8).collidepoint(x, row):
+                        pygame.draw.line(surf, (255, 190, 60), (x + off.x, row + off.y), (x + 8 + off.x, row + off.y), 1)
+            return
+        for i, pts in enumerate(self._cracks):   # капли лавы бегут по трещинам
+            p = (t * 0.35 + i * 0.173) % 1.0
+            seg = 0 if p < 0.5 else 1
+            f = (p * 2) % 1.0
+            a, b = pts[seg], pts[seg + 1]
+            x, y = a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f
+            pygame.draw.circle(surf, (255, 200, 70), (int(x + off.x), int(y + off.y)), 2)
+            pygame.draw.circle(surf, (255, 110, 30), (int(x + off.x), int(y + off.y)), 3, 1)
+
+    def draw_embers(self, surf, off, t):
+        """Искры, поднимающиеся вверх, и пульсирующее зарево по краям."""
+        if not self.zone.get("burning"):
+            return
+        for i in range(18):
+            x = (i * 53) % 470 + math.sin(t * 2 + i) * 8
+            y = 270 - ((t * (22 + (i % 5) * 7) + i * 41) % 290)
+            col = (255, 200, 80) if i % 3 == 0 else (255, 120, 40)
+            surf.fill(col, (int(x + off.x), int(y + off.y), 2, 2))
+        glow = _fire_glow()
+        glow.set_alpha(int(120 + 70 * math.sin(t * 3)))
+        surf.blit(glow, (0, 0))
+
     def draw_hazards(self, surf, off):
         blink = int(pygame.time.get_ticks() / 90) % 2
+        if self.arena_pending is not None:   # будущий край платформы
+            pygame.draw.rect(surf, (255, 70, 70) if blink else (255, 190, 70), self.arena_pending.move(off.x, off.y), 3)
         for rect in self.pending:   # будущие стены — мигающие контуры
             pygame.draw.rect(surf, (255, 70, 70) if blink else (255, 190, 70), rect.move(off.x, off.y), 2)
         if self.modifier == "gravity" and self.locked:

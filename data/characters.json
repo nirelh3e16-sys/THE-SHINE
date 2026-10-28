@@ -124,6 +124,34 @@
     "boss": "shine",
     "kills": 10
    }
+  },
+  {
+   "id": "devil",
+   "name": "Дьявол",
+   "desc": "Хозяин положения. Десять сердец, огромная скорость, прислужник и якорь на цепи.",
+   "mods": [
+    [
+     "max_hp",
+     "add",
+     14
+    ],
+    [
+     "speed",
+     "mul",
+     1.45
+    ]
+   ],
+   "start_items": [
+    "compact_imp",
+    "anchor",
+    "angel_wings"
+   ],
+   "scale": 1.0,
+   "traits": [],
+   "unlock": {
+    "boss": "imp",
+    "kills": 1
+   }
   }
  ]
 }

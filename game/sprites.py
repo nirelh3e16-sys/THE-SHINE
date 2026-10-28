@@ -105,6 +105,7 @@ def make_player_sprite(char_id, scale=1.0):
         "bigshot": {"b": (40, 42, 62), "n": (30, 30, 40)},
         "glitch": {"b": (60, 255, 220), "s": (255, 130, 230), "n": (255, 240, 90)},
         "angel": {"b": (250, 250, 255), "n": (255, 222, 110)},
+        "devil": {"b": (120, 20, 30), "s": (215, 60, 55), "n": (20, 15, 20)},
     }
     pal.update(tweaks.get(char_id, {}))
     base = from_rows(PLAYER, pal)
@@ -116,6 +117,11 @@ def make_player_sprite(char_id, scale=1.0):
                     base.set_at((x, y), (130, 30, 40))
         for x in range(3, 7):                        # борода
             base.set_at((x, 4), (110, 60, 30))
+    elif char_id == "devil":
+        for x, y in ((2, 0), (3, 0), (2, 1), (7, 0), (6, 0), (7, 1)):                    # рога
+            base.set_at((x, y), (255, 235, 180))
+        for y in range(6, 9):                                                            # золотой пояс
+            base.set_at((5, y), (255, 190, 50))
     elif char_id == "bigshot":
         for y in range(6, 9):                        # золотой галстук
             base.set_at((5, y), (255, 215, 70))
@@ -432,6 +438,121 @@ def make_shine(variant=1):
     return outlined(s)
 
 
+def make_basalt():
+    s, d = _surf(16, 16), pygame.draw
+    d.rect(s, (38, 32, 40), (0, 1, 16, 15), border_radius=3)
+    d.rect(s, (58, 50, 60), (2, 2, 7, 5), border_radius=2)
+    d.line(s, (255, 110, 30), (3, 9), (7, 12), 1)
+    d.line(s, (255, 170, 40), (7, 12), (12, 10), 1)
+    d.rect(s, K, (0, 1, 16, 15), 1, border_radius=3)
+    return s
+
+
+def make_hellhound():
+    s, d = _surf(16, 12), pygame.draw
+    d.ellipse(s, (60, 30, 30), (2, 3, 10, 6))
+    d.rect(s, (60, 30, 30), (10, 2, 5, 5))
+    d.polygon(s, (255, 110, 30), [(10, 2), (11, 0), (12, 2)])
+    d.rect(s, (60, 30, 30), (3, 8, 2, 3)); d.rect(s, (60, 30, 30), (9, 8, 2, 3))
+    d.line(s, (255, 140, 40), (2, 4), (0, 1), 1)
+    d.line(s, (255, 110, 30), (4, 4), (10, 4), 1)
+    s.set_at((12, 3), (255, 230, 90)); s.set_at((13, 3), (255, 230, 90))
+    return outlined(s)
+
+
+def make_fire_imp():
+    s, d = _surf(14, 16), pygame.draw
+    d.ellipse(s, (210, 55, 45), (3, 5, 8, 8))
+    d.circle(s, (230, 70, 55), (7, 5), 4)
+    d.polygon(s, (255, 230, 120), [(3, 3), (2, 0), (5, 2)]); d.polygon(s, (255, 230, 120), [(11, 3), (12, 0), (9, 2)])
+    d.rect(s, (255, 255, 220), (5, 4, 2, 2)); d.rect(s, (255, 255, 220), (8, 4, 2, 2))
+    d.polygon(s, (255, 160, 40), [(2, 8), (0, 5), (4, 7)]); d.polygon(s, (255, 160, 40), [(12, 8), (14, 5), (10, 7)])
+    d.line(s, (210, 55, 45), (7, 13), (11, 15), 1)
+    return outlined(s)
+
+
+def make_golem():
+    s, d = _surf(22, 22), pygame.draw
+    d.rect(s, (60, 50, 62), (3, 4, 16, 15), border_radius=3)
+    d.rect(s, (60, 50, 62), (6, 0, 10, 7), border_radius=2)
+    d.rect(s, (60, 50, 62), (0, 7, 5, 9)); d.rect(s, (60, 50, 62), (17, 7, 5, 9))
+    d.line(s, (255, 120, 30), (5, 8), (10, 13), 1); d.line(s, (255, 170, 40), (10, 13), (15, 10), 1)
+    d.line(s, (255, 120, 30), (8, 17), (14, 15), 1)
+    d.rect(s, (255, 220, 80), (8, 3, 2, 2)); d.rect(s, (255, 220, 80), (12, 3, 2, 2))
+    return outlined(s)
+
+
+def make_ember():
+    s, d = _surf(14, 16), pygame.draw
+    d.polygon(s, (255, 110, 30), [(7, 0), (12, 8), (10, 14), (4, 14), (2, 8)])
+    d.polygon(s, (255, 190, 50), [(7, 4), (10, 9), (8, 13), (5, 13), (4, 9)])
+    d.rect(s, (255, 255, 220), (5, 8, 2, 2)); d.rect(s, (255, 255, 220), (8, 8, 2, 2))
+    return outlined(s)
+
+
+def make_idol():
+    s, d = _surf(16, 20), pygame.draw
+    d.rect(s, (70, 62, 72), (3, 2, 10, 16), border_radius=2)
+    d.rect(s, (50, 44, 52), (1, 16, 14, 4))
+    d.rect(s, (255, 130, 30), (5, 6, 2, 3)); d.rect(s, (255, 130, 30), (9, 6, 2, 3))
+    d.rect(s, (255, 110, 30), (5, 12, 6, 2))
+    d.polygon(s, (255, 130, 30), [(8, 0), (10, 3), (6, 3)])
+    return outlined(s)
+
+
+# цвет радужки Беса по фазам (рисуется динамически в Imp.draw, зрачок-щель следит за игроком)
+IMP_IRIS = {1: (255, 150, 35), 2: (255, 95, 25), 3: (255, 50, 35)}
+
+
+def make_imp_boss(variant=1):
+    """Бес — летающий глаз с крыльями, как The Shine, но из базальта с жилками лавы.
+    Вместо нимба — дьявольские рога. variant 1/2/3 — всё сильнее раскалён."""
+    w, h = 104, 84
+    s = _surf(w, h)
+    rock = {1: (66, 56, 70), 2: (60, 50, 64), 3: (54, 44, 58)}[variant]       # базальт
+    rock_lt = {1: (92, 80, 96), 2: (96, 82, 98), 3: (100, 84, 100)}[variant]
+    lava = {1: (255, 120, 30), 2: (255, 150, 40), 3: (255, 190, 60)}[variant]
+    cx, cy = w // 2, 46
+    for side in (-1, 1):                                    # крылья: каменные перья с прожилками лавы
+        base = 0 if side > 0 else 180
+        for ang, length, width in ((-62, 40, 7), (-34, 46, 8), (-8, 48, 8), (20, 42, 7), (46, 32, 6)):
+            a_ = base + ang if side > 0 else 180 - ang
+            _feather(s, (cx + side * 12, cy), a_, length, width, rock, K)
+            v = pygame.Vector2(math.cos(math.radians(a_)), math.sin(math.radians(a_)))
+            root = pygame.Vector2(cx + side * 12, cy)
+            pygame.draw.line(s, lava, root + v * 6, root + v * (length * 0.8), 1)        # жилка лавы вдоль пера
+            pygame.draw.line(s, rock_lt, root + v * 4 + pygame.Vector2(-v.y, v.x) * 2, root + v * (length * 0.5) + pygame.Vector2(-v.y, v.x) * 2, 1)
+    pygame.draw.circle(s, rock, (cx, cy), 19)                                          # глаз: базальтовая оправа
+    pygame.draw.circle(s, lava, (cx, cy), 19, 2)
+    pygame.draw.circle(s, (255, 236, 190), (cx, cy), 15)                               # раскалённое «белое» глаза
+    for ang in range(0, 360, 45):                                                      # жилки лавы по оправе
+        vv = pygame.Vector2(math.cos(math.radians(ang)), math.sin(math.radians(ang)))
+        pygame.draw.line(s, lava, (cx + vv.x * 15, cy + vv.y * 15), (cx + vv.x * 21, cy + vv.y * 21), 1)
+    if variant >= 2:                                                                  # трещины лавы на крыльях
+        for sx in (-1, 1):
+            pygame.draw.lines(s, lava, False, [(cx + sx * 26, cy - 8), (cx + sx * 32, cy - 2), (cx + sx * 30, cy + 8)], 1)
+    if variant == 3:
+        for sx in (-1, 1):
+            pygame.draw.lines(s, (255, 235, 120), False, [(cx + sx * 36, cy - 14), (cx + sx * 40, cy - 4), (cx + sx * 36, cy + 4)], 1)
+    for side in (-1, 1):                                                               # дьявольские рога вместо нимба
+        pts = [(cx + side * 8, 20), (cx + side * 12, 10), (cx + side * 20, 4), (cx + side * 26, 6),
+               (cx + side * 20, 11), (cx + side * 16, 18), (cx + side * 12, 24)]
+        pygame.draw.polygon(s, (30, 22, 34), pts)
+        pygame.draw.polygon(s, rock_lt, pts, 1)
+        pygame.draw.line(s, lava, (cx + side * 10, 20), (cx + side * 18, 8), 1)        # жилка в роге
+        pygame.draw.circle(s, (255, 235, 150), (cx + side * 25, 6), 1)                  # раскалённый кончик
+    return outlined(s)
+
+
+def make_imp_mini():
+    s, d = _surf(14, 14), pygame.draw
+    d.circle(s, (220, 60, 50), (7, 8), 4)
+    d.polygon(s, (255, 230, 120), [(3, 5), (2, 1), (5, 4)]); d.polygon(s, (255, 230, 120), [(11, 5), (12, 1), (9, 4)])
+    d.polygon(s, (150, 30, 30), [(2, 8), (0, 4), (4, 7)]); d.polygon(s, (150, 30, 30), [(12, 8), (14, 4), (10, 7)])
+    d.rect(s, (255, 255, 210), (5, 7, 2, 2)); d.rect(s, (255, 255, 210), (8, 7, 2, 2))
+    return outlined(s)
+
+
 def make_barrier():
     s, d = _surf(16, 16), pygame.draw
     d.rect(s, (170, 170, 180), (0, 2, 16, 14))
@@ -490,6 +611,22 @@ def _icon_draw(kind, color):
         d.rect(s, c, (1, 1, 10, 10)); d.rect(s, (200, 200, 210), (2, 2, 8, 6)); d.rect(s, K, (1, 1, 10, 10), 1)
     elif kind == "halo":
         d.ellipse(s, c, (0, 3, 12, 6), 2); d.ellipse(s, (160, 100, 220), (1, 4, 10, 4), 1)
+    elif kind == "grenade":
+        d.circle(s, c, (6, 7), 4); d.rect(s, (70, 70, 60), (5, 1, 3, 3)); d.line(s, (220, 220, 90), (8, 2), (10, 1)); d.line(s, K, (3, 6), (9, 8), 1)
+    elif kind == "medkit":
+        d.rect(s, c, (1, 3, 10, 8)); d.rect(s, (220, 40, 50), (5, 4, 2, 6)); d.rect(s, (220, 40, 50), (3, 6, 6, 2)); d.rect(s, (200, 200, 200), (4, 1, 4, 2), 1)
+    elif kind == "anchor":
+        d.line(s, c, (6, 2), (6, 10), 2); d.line(s, c, (3, 5), (9, 5), 1); d.arc(s, c, (1, 4, 10, 8), 3.4, 6.0, 2); d.circle(s, c, (6, 2), 1)
+    elif kind == "wings":
+        d.polygon(s, c, [(6, 6), (0, 1), (1, 8), (5, 9)]); d.polygon(s, c, [(6, 6), (12, 1), (11, 8), (7, 9)]); d.line(s, (255, 215, 90), (5, 10), (7, 10), 1)
+    elif kind == "bat":
+        d.line(s, c, (2, 10), (9, 3), 3); d.circle(s, c, (9, 3), 2); d.line(s, (120, 80, 40), (2, 10), (4, 8), 3)
+    elif kind == "smg":
+        d.rect(s, c, (1, 4, 10, 3)); d.rect(s, c, (3, 7, 2, 4)); d.rect(s, (60, 60, 70), (7, 7, 2, 3)); d.rect(s, (60, 60, 70), (10, 3, 2, 2))
+    elif kind == "phone":
+        d.rect(s, c, (3, 1, 6, 10), border_radius=1); d.rect(s, (150, 210, 245), (4, 2, 4, 6)); d.line(s, (255, 90, 90), (4, 2), (8, 7), 1); d.line(s, (255, 90, 90), (8, 2), (4, 7), 1)
+    elif kind == "impmini":
+        d.circle(s, c, (6, 7), 4); d.polygon(s, (255, 230, 120), [(3, 4), (2, 1), (5, 3)]); d.polygon(s, (255, 230, 120), [(9, 4), (10, 1), (7, 3)]); d.rect(s, (255, 255, 200), (4, 6, 2, 2)); d.rect(s, (255, 255, 200), (7, 6, 2, 2))
     elif kind == "axe":
         d.line(s, (150, 100, 60), (2, 10), (8, 3), 2); d.polygon(s, c, [(6, 1), (11, 3), (10, 7), (7, 5)])
     elif kind == "shotgun":
@@ -519,6 +656,9 @@ class SpriteBook:
             "sprinkler": make_sprinkler(), "cart": make_cart(), "neighbor": make_neighbor(),
             "neighbor_boss": make_neighbor_boss(), "hedge": make_hedge(), "crate": make_crate(),
             "shine": make_shine(1), "shine2": make_shine(2), "shine3": make_shine(3), "eye": make_eye(), "fragment": make_fragment(), "glitchling": make_glitchling(), "chaos": make_chaos(),
+            "basalt": make_basalt(), "hellhound": make_hellhound(), "fire_imp": make_fire_imp(), "golem": make_golem(),
+            "ember": make_ember(), "idol": make_idol(), "imp": make_imp_boss(1), "imp2": make_imp_boss(2), "imp3": make_imp_boss(3),
+            "imp_mini": make_imp_mini(),
             "rat": make_rat(), "cop": make_cop(), "drone": make_drone(), "car": make_car(), "tvmon": make_tvmon(),
             "mayor": make_mayor(), "mayor_desk": make_mayor_desk(), "mayor_surreal": make_mayor_surreal(), "barrier": make_barrier(),
         }

@@ -44,6 +44,15 @@ ZONES = {
         # после предательства «рай» рассыпается
         "judgment_theme": {"floor": ((72, 40, 96), (60, 30, 82)), "wall": (28, 10, 40), "wall_decor": "acid"},
     },
+    "hell": {
+        "id": "hell", "name": "АД",
+        "floor": ((54, 44, 52), (46, 37, 46)), "wall": (30, 22, 28),
+        "wall_decor": "lava", "obstacle": "basalt", "burning": True,
+        "enemy_pool": (("hellhound", 3), ("fire_imp", 2), ("magma_golem", 1), ("ember", 2), ("idol", 1)),
+        "boss": "imp", "boss_name": "БЕС", "boss_testimony": "imp_slain",
+        "music_combat": "hell_combat", "music_boss": "hell_boss", "hp_mult": 2.6,
+        "modifiers": True, "shifted_doors": True, "boss_cutscene": "imp",
+    },
     # Внутренность дома: мини-данж, в который входят из комнаты «house»
     "house": {
         "id": "house", "name": "ДОМ",
@@ -53,7 +62,7 @@ ZONES = {
         "music_combat": "suburb_combat", "hp_mult": 1.2,
     },
 }
-ZONE_ORDER = ["forest", "suburbs", "city", "center", "shine"]
+ZONE_ORDER = ["forest", "suburbs", "city", "center", "shine", "hell"]   # в Ад попадают из разлома после The Shine
 
 
 def zone_room_count(zone_id, cfg):

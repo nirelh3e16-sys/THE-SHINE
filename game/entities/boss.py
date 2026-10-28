@@ -1122,6 +1122,275 @@ class Shine(Enemy):
             draw_text(surf, self.label, (cx, cy - self.radius - 22), "gold" if blink else "white", 11, "midbottom")
 
 
+IMP = {"name": "Бес", "hp": 1400, "speed": 0, "radius": 21, "contact": 2,
+       "behavior": "chase", "sprite": "imp", "coin": 0}
+IMP_CD = {"geyser": (5, 9), "breath": (4, 7), "swoop": (6, 10), "wave": (5, 9),
+          "summon": (6, 10), "meteors": (5, 9), "spiral": (6, 10), "ring": (4, 7)}
+FIRE = ((255, 150, 40), (255, 90, 30), (255, 220, 90))
+
+
+def arena_drops(arena, player_pos, count, size, warmup):
+    """Падающие зоны только на платформе: одна под игроком (с предупреждением) и остальные случайно."""
+    spots = [(int(player_pos.x - size / 2), int(player_pos.y - size / 2))]
+    for _ in range(count):
+        spots.append((random.randint(arena.left, arena.right - size), random.randint(arena.top, arena.bottom - size)))
+    hs = []
+    for x, y in spots:
+        x = max(arena.left, min(arena.right - size, x))
+        y = max(arena.top, min(arena.bottom - size, y))
+        hs.append(Hazard((x, y, size, size), 2, warmup, 0.3, kind="drop"))
+    return hs
+
+
+class Imp(Enemy):
+    """Бес — босс Ада. Парит над лавой вокруг платформы. Сильнее The Shine: больше здоровья и приёмов.
+    Фаза 1: огненные шары, пламя (лучи), гейзеры, пике. Фаза 2: волны лавы, метеориты, гончие.
+    Фаза 3: спирали, кольца огня, платформа постепенно сужается. Всё заранее предупреждается."""
+
+    SPAWN_TIME = 2.0
+
+    def __init__(self, pos, hp_scale=1.0):
+        super().__init__("imp", pos, IMP, 1.0)
+        self.state, self.timer, self.phase = "idle", 1.5, 1
+        self.is_boss = True
+        self.last = None
+        self.aim = pygame.Vector2(1, 0)
+        self.spin = self.spin_tick = 0.0
+        self.cd = {k: 0.0 for k in IMP_CD}
+        self.delayed = []
+        self.cast_fn = None
+        self.label = None
+        self.after = 1.0
+        self.shrink_t = 12.0
+        self.pupil = pygame.Vector2()
+
+    def _phase_for_hp(self):
+        ratio = self.hp / self.max_hp
+        return 3 if ratio <= 0.33 else 2 if ratio <= 0.66 else 1
+
+    @staticmethod
+    def _arena(room):
+        return room.arena or pygame.Rect(ROOM_X, ROOM_Y, ROOM_W, ROOM_H)
+
+    def _enemy_count(self, room):
+        pending = sum(c for _, c in room.spawn_requests)
+        return pending + sum(1 for e in room.enemies if not getattr(e, "is_boss", False) and not e.dead)
+
+    def update(self, dt, room, player, shoot):
+        if self.spawn_t > 0:
+            self.spawn_t -= dt
+            return
+        self._common(dt, room)
+        for k in self.cd:
+            self.cd[k] = max(0.0, self.cd[k] - dt)
+        for ev in self.delayed:
+            ev[0] -= dt
+        due = [ev for ev in self.delayed if ev[0] <= 0]
+        self.delayed = [ev for ev in self.delayed if ev[0] > 0]
+        for ev in due:
+            ev[1]()
+        new_phase = self._phase_for_hp()
+        if new_phase > self.phase:
+            self.phase = new_phase
+            self.sprite = "imp2" if new_phase == 2 else "imp3"
+            self.state, self.timer, self.cast_fn, self.label = "roar", 1.5, None, None
+            room.shake_request = (5, 0.6)
+            room.notices.append(("БЕС: «Думаешь, это всё, на что я способен?»" if new_phase == 2
+                                 else "БЕС: «Гори. Гори вместе с моей лавой!»", "red"))
+        if self.phase == 3:   # платформа сужается; будущий край заранее мигает
+            self.shrink_t -= dt
+            if self.shrink_t <= 0 and room.arena_warn_t is None:
+                if room.begin_shrink():
+                    room.notices.append(("Лава поднимается! Платформа уменьшается.", "red"))
+                self.shrink_t = 14.0
+        self.timer -= dt
+        to_player = player.pos - self.pos
+        d = to_player.normalize() if to_player.length_squared() > 0 else pygame.Vector2(1, 0)
+        self.pupil, self.flip = d, d.x < 0
+        st = self.state
+        if st == "roar":
+            if self.timer <= 0:
+                self.state, self.timer = "idle", 0.6
+        elif st == "idle":
+            self._hover(room, player, dt)
+            if self.timer <= 0:
+                self._choose(room, player, shoot)
+        elif st == "cast":
+            if self.timer <= 0:
+                fn, self.cast_fn, self.label = self.cast_fn, None, None
+                if fn:
+                    fn()
+                self.state, self.timer = "idle", self.after
+        elif st == "wind_swoop":
+            if self.timer > 0.35:
+                self.aim = d.copy()
+            if self.timer <= 0:
+                self.state, self.timer = "swoop", 0.8
+        elif st == "swoop":
+            self.pos += self.aim * 300 * dt
+            if self.timer <= 0:
+                self.state, self.timer = "recover", 0.8
+                room.shake_request = (3, 0.2)
+        elif st == "recover":
+            if self.timer <= 0:
+                self.state, self.timer = "idle", 0.5
+        elif st == "wind_spiral":
+            if self.timer <= 0:
+                self.state, self.timer, self.spin_tick = "spiral", 3.4, 0.0
+        elif st == "spiral":
+            self.spin_tick -= dt
+            if self.spin_tick <= 0:
+                self.spin_tick = 0.2
+                self.spin += 0.45
+                for arm in range(4):
+                    a = self.spin + arm * math.tau / 4
+                    shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 85, 1, radius=3, color=random.choice(FIRE))
+            if self.timer <= 0:
+                self.state, self.timer = "recover", 1.0
+        self.pos.x = max(14, min(466, self.pos.x))
+        self.pos.y = max(14, min(256, self.pos.y))
+
+    def _hover(self, room, player, dt):
+        """Парит над лавой на противоположной от игрока стороне платформы."""
+        ar = self._arena(room)
+        center = pygame.Vector2(ar.center)
+        away = center - player.pos
+        u = away.normalize() if away.length_squared() > 1 else pygame.Vector2(0, -1)
+        target = center + pygame.Vector2(u.x * (ar.w / 2 + 48), u.y * (ar.h / 2 + 40))
+        self.pos = self.pos.move_towards(target, (110 + 30 * self.phase) * dt)
+
+    def _cast(self, label, wind, fn, after):
+        self.state, self.timer, self.label, self.cast_fn, self.after = "cast", wind, label, fn, after
+
+    def _choose(self, room, player, shoot):
+        calm = not room.hazards and room.arena_warn_t is None
+        options = ["fire", "fire"]
+        if self.cd["breath"] <= 0:
+            options.append("breath")
+        if self.cd["geyser"] <= 0 and calm:
+            options.append("geyser")
+        if self.cd["swoop"] <= 0:
+            options.append("swoop")
+        if self.phase >= 2:
+            if self.cd["wave"] <= 0 and calm:
+                options.append("wave")
+            if self.cd["meteors"] <= 0 and calm:
+                options.append("meteors")
+            if self.cd["summon"] <= 0 and self._enemy_count(room) < 4:
+                options.append("summon")
+        if self.phase == 3:
+            if self.cd["spiral"] <= 0:
+                options.append("spiral")
+            if self.cd["ring"] <= 0:
+                options.append("ring")
+        choice = random.choice([o for o in options if o != self.last] or options)
+        self.last = choice
+        if choice in self.cd:
+            lo, hi = IMP_CD[choice]
+            self.cd[choice] = random.uniform(lo, hi)
+        self.after = (0.9, 0.7, 0.55)[self.phase - 1]
+        getattr(self, "_atk_" + choice)(room, player, shoot)
+
+    def _atk_fire(self, room, player, shoot):
+        n = 5 if self.phase == 1 else 7
+
+        def fire():
+            aim = player.pos - self.pos
+            base = math.atan2(aim.y, aim.x) if aim.length_squared() else 0.0
+            for i in range(n):
+                a = base + (i - (n - 1) / 2) * 0.22
+                shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 130, 1, radius=4, color=random.choice(FIRE))
+        self._cast(None, 0.5, fire, self.after)
+
+    def _atk_breath(self, room, player, shoot):
+        offs = (-0.5, 0.0, 0.5) if self.phase == 1 else (-0.8, -0.4, 0.0, 0.4, 0.8)
+
+        def fire():
+            aim = player.pos - self.pos
+            base = math.atan2(aim.y, aim.x) if aim.length_squared() else 0.0
+            for off in offs:
+                room.hazards.append(Laser(self.pos, base + off, 1.0, 0.45, 12, 2))
+        self._cast("Огненное дыхание", 0.4, fire, self.after + 0.8)
+
+    def _atk_geyser(self, room, player, shoot):
+        room.hazards.extend(arena_drops(self._arena(room), player.pos, 5, 40, 1.1))
+        self._cast("Гейзеры", 0.8, None, self.after)
+
+    def _atk_meteors(self, room, player, shoot):
+        room.hazards.extend(arena_drops(self._arena(room), player.pos, 8, 30, 1.0))
+        self._cast("Метеориты", 0.8, None, self.after)
+
+    def _atk_wave(self, room, player, shoot):
+        ar = self._arena(room)
+        band = int(ar.h * 0.55)
+        left = random.random() < 0.5
+        y = ar.top if random.random() < 0.5 else ar.bottom - band
+        start = pygame.Rect(ar.left - 70 if left else ar.right, y, 70, band)
+        warn = pygame.Rect(ar.left, y, ar.w, band)
+        speed = 170.0
+        life = (ar.w + 140) / speed + 0.1
+        room.hazards.append(Hazard(start, 2, 1.2, life, (speed if left else -speed, 0), warn, "lava"))
+        self._cast("Волна лавы", 0.9, None, self.after)
+
+    def _atk_summon(self, room, player, shoot):
+        self._cast("Гончие из лавы", 0.9, lambda: room.request_spawn("hellhound", 2), self.after)
+
+    def _atk_ring(self, room, player, shoot):
+        def ring(offset):
+            for i in range(16):
+                a = offset + i * math.tau / 16
+                shoot(self.pos, pygame.Vector2(math.cos(a), math.sin(a)), 95, 1, radius=3, color=random.choice(FIRE))
+
+        def fire():
+            off = random.uniform(0, math.tau)
+            ring(off)
+            self.delayed.append([0.6, lambda: ring(off + math.pi / 16)])   # второе кольцо со сдвигом
+        self._cast("Кольцо огня", 0.7, fire, self.after)
+
+    def _atk_spiral(self, room, player, shoot):
+        self.state, self.timer = "wind_spiral", 0.9
+
+    def _atk_swoop(self, room, player, shoot):
+        to = player.pos - self.pos
+        self.aim = to.normalize() if to.length_squared() else self.aim
+        self.state, self.timer = "wind_swoop", 0.9
+
+    @property
+    def warning(self):
+        return self.state in ("cast", "wind_swoop", "wind_spiral")
+
+    def draw(self, surf, off, sprites):
+        t = pygame.time.get_ticks()
+        blink = int(t / 90) % 2
+        cx, cy = int(self.pos.x + off.x), int(self.pos.y + off.y) + int(math.sin(t / 260) * 3)
+        img = sprites.white(self.sprite) if self.hurt_t > 0 or (self.state == "roar" and blink) else sprites.get(self.sprite, self.flip)
+        if self.spawn_t > 0:   # поднимается из лавы
+            frac = self.spawn_t / self.SPAWN_TIME
+            cy += int(46 * frac)
+            clip = surf.get_clip()
+            surf.set_clip(pygame.Rect(0, 0, surf.get_width(), int(self.pos.y + off.y) + 26))
+            surf.blit(img, img.get_rect(center=(cx, cy)))
+            surf.set_clip(clip)
+            pygame.draw.ellipse(surf, (255, 190, 60), (cx - 26, int(self.pos.y + off.y) + 20, 52, 14), 2)
+            return
+        surf.blit(img, img.get_rect(center=(cx, cy)))
+        # радужка и зрачок-щель большого глаза следят за игроком
+        from ..sprites import IMP_IRIS
+        ex, ey = cx + 1, cy + 4
+        ox, oy = int(self.pupil.x * 4), int(self.pupil.y * 4)
+        pygame.draw.circle(surf, IMP_IRIS[self.phase], (ex + ox, ey + oy), 10)
+        pygame.draw.ellipse(surf, (25, 6, 6), (ex + int(ox * 1.5) - 2, ey + int(oy * 1.5) - 7, 4, 14))
+        pygame.draw.circle(surf, (255, 240, 200), (ex + ox - 3, ey + oy - 4), 1)
+        if self.state == "wind_swoop" and blink:
+            end = self.pos + self.aim * 320
+            pygame.draw.line(surf, (255, 60, 60), (cx, cy), (end.x + off.x, end.y + off.y), 2)
+        if self.warning and blink:
+            pygame.draw.circle(surf, (255, 255, 255), (cx, cy), self.radius + 8, 1)
+        if self.state == "cast" and self.label:
+            from ..ui.text import draw_text
+            draw_text(surf, self.label, (cx, cy - self.radius - 26), "gold" if blink else "white", 11, "midbottom")
+
+
 def create_boss(boss_id, pos, hp_scale=1.0):
     if boss_id == "lumberjack":
         return Lumberjack(pos, hp_scale)
@@ -1133,4 +1402,6 @@ def create_boss(boss_id, pos, hp_scale=1.0):
         return Chaos(pos, hp_scale)
     if boss_id == "shine":
         return Shine(pos, hp_scale)
+    if boss_id == "imp":
+        return Imp(pos, hp_scale)
     raise ValueError(f"неизвестный босс: {boss_id}")

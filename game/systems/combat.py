@@ -21,6 +21,8 @@ def build_player_shots(player, aim, rng=random, force_kind=None, allow_melee=Tru
     crit = rng.random() < min(0.4, max(0.0, st["luck"]) * 0.04)
     if crit:
         dmg *= 2
+    if "smg" in flags:   # небольшой разброс у автомата
+        aim = _rot(aim, rng.uniform(-0.06, 0.06))
     origin = player.pos + aim * 8
     pierce = "pierce" in flags
     explode = "explosive_shots" in flags and "heavy" in flags
@@ -29,6 +31,9 @@ def build_player_shots(player, aim, rng=random, force_kind=None, allow_melee=Tru
     if "axe" in flags and allow_melee:   # широкий тяжёлый взмах
         return [Projectile(origin + aim * 8, aim * 150, dmg * 1.5, life, 16, True, color, pierce=True,
                            knockback=340, poison="toxic_sweep" in flags, kind="swing")]
+    if "bat" in flags and allow_melee:   # аналог топора: чуть меньше урон, сильнее отбрасывание
+        return [Projectile(origin + aim * 8, aim * 150, dmg * 1.3, life, 14, True, color, pierce=True,
+                           knockback=430, poison="toxic_sweep" in flags, kind="swing")]
 
     if "melee" in flags and allow_melee:
         return [Projectile(origin + aim * 6, aim * 160, dmg * 1.2, life, 12, True, color, pierce=True,

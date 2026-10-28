@@ -22,6 +22,8 @@ MUSIC_TRACKS = {
     "combat": "Forest_Combat.mp3",         # боевые комнаты леса
     "calm": "Hollow_Sanctuary.mp3",        # магазины, сокровища, небоевые комнаты, после босса
     "boss": "spawn_of_darkness.mp3",       # бой с боссом
+    "hell_combat": "Below_the_Bedrock.mp3",  # боевые комнаты Ада (если файла нет — играет трек Центра)
+    "hell_boss": "The_Demon.mp3",         # бой с Бесом (если файла нет — трек финального боя)
     "shine_boss": "eternal_judgment.mp3",  # финальный бой с THE SHINE
     "center_combat": "Downtown.mp3",       # боевые комнаты Центра
     "chaos_boss": "CHAOS.mp3",             # бой с боссом Хаосом
@@ -29,6 +31,7 @@ MUSIC_TRACKS = {
     "menu": "THE_SHINE.mp3",               # меню, экраны смерти и победы (и титры, когда появятся)
     "suburb_combat": "Suburban_Nightmare.mp3",  # боевые комнаты пригорода и домов
 }
+MUSIC_FALLBACK = {"hell_combat": "center_combat", "hell_boss": "shine_boss"}
 MUSIC_GAIN = 0.7  # музыка немного тише эффектов
 
 
@@ -56,7 +59,7 @@ class MusicManager:
         if not self.enabled or key == self.current:
             return
         self.current = key  # запоминаем даже при ошибке, чтобы не пытаться каждый кадр
-        path = self.paths.get(key)
+        path = self.paths.get(key) or self.paths.get(MUSIC_FALLBACK.get(key))
         if path is None:
             pygame.mixer.music.stop()
             return

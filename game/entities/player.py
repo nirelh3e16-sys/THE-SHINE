@@ -58,6 +58,8 @@ class Player:
         if self.debug_max_hp is not None:
             self.stats["max_hp"] = float(self.debug_max_hp)
         self.flags = self.db.flags(self.inv.items)
+        self.ghost = "ghost" in self.char.get("traits", []) or "ghost" in self.flags
+        self.gravity_immune = "gravity_immune" in self.char.get("traits", []) or "gravity_immune" in self.flags
         self.max_hp = int(round(self.stats["max_hp"]))
         if self.max_hp > old_max:
             self.hp += self.max_hp - old_max

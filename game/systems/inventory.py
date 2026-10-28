@@ -6,6 +6,7 @@ class Inventory:
         self.items = []
         self.active_id = None
         self.active_cd = 0.0
+        self.kills_left = 0     # для предметов, которые заряжаются убийствами (Аптечка)
 
     def has(self, item_id):
         return item_id in self.items
@@ -17,6 +18,7 @@ class Inventory:
         if item_def.active:
             self.active_id = item_def.id
             self.active_cd = 0.0
+            self.kills_left = 0
         return True
 
     def tick(self, dt):
@@ -24,7 +26,14 @@ class Inventory:
             self.active_cd = max(0.0, self.active_cd - dt)
 
     def can_use_active(self):
-        return self.active_id is not None and self.active_cd <= 0
+        return self.active_id is not None and self.active_cd <= 0 and self.kills_left <= 0
+
+    def start_kill_recharge(self, kills):
+        self.kills_left = kills
+
+    def register_kill(self):
+        if self.kills_left > 0:
+            self.kills_left -= 1
 
     def start_cooldown(self, cooldown):
         self.active_cd = cooldown

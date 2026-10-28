@@ -49,6 +49,12 @@ class ItemDatabase:
             for stat, (op, value) in mods.items():
                 if stat not in BASE_STATS or op not in VALID_OPS:
                     raise ValueError(f"некорректный модификатор {stat} у {entry['id']}")
+            active = entry.get("active")
+            if active is not None:
+                by_time = float(active.get("cooldown", 0)) > 0
+                by_kills = active.get("recharge") == "kills" and int(active.get("kills", 0)) > 0
+                if "type" not in active or not (by_time or by_kills):
+                    raise ValueError(f"предмет {entry['id']}: у активного предмета нужны type и перезарядка")
             if entry["id"] in items:
                 raise ValueError(f"повторяющийся id предмета {entry['id']}")
             items[entry["id"]] = ItemDef(

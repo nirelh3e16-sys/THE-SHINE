@@ -44,7 +44,10 @@ class Hazard:
                 pygame.draw.rect(surf, (255, 70, 70), self.warn_rect.move(off.x, off.y), 2)
             return
         r = self.rect.move(off.x, off.y)
-        if self.kind == "wing":
+        if self.kind == "lava":
+            pygame.draw.rect(surf, (255, 120, 30), r)
+            pygame.draw.rect(surf, (255, 225, 90), r, 3)
+        elif self.kind == "wing":
             pygame.draw.rect(surf, (255, 250, 220), r)
             pygame.draw.rect(surf, (255, 205, 80), r, 3)
         elif self.kind == "mower":

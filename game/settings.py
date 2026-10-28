@@ -30,7 +30,7 @@ DEFAULT_CONFIG = {
     "god_mode": False,
     "screen_shake": True,
     "master_volume": 0.6,
-    "zones": {"forest": {"rooms": 8}, "suburbs": {"rooms": 9}, "city": {"rooms": 9}, "center": {"rooms": 9}},
+    "zones": {"forest": {"rooms": 8}, "suburbs": {"rooms": 9}, "city": {"rooms": 9}, "center": {"rooms": 9}, "hell": {"rooms": 9}},
     "max_player_projectiles": 120,
     "max_enemy_projectiles": 160,
     "max_particles": 300,

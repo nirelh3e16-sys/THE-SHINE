@@ -536,6 +536,63 @@
      "effects": []
     }
    ]
+  },
+  {
+   "id": "infernal_altar",
+   "kind": "altar",
+   "name": "Алтарь сделок",
+   "zones": [
+    "hell"
+   ],
+   "text": "Из лавы торчит чёрный алтарь. На нём — договор. Мелким шрифтом, как обычно.",
+   "choices": [
+    {
+     "label": "Кровь: -1 макс. HP, урон +2",
+     "result": "Договор подписан. Пальцы горят.",
+     "effects": [
+      {
+       "type": "max_hp",
+       "value": -1
+      },
+      {
+       "type": "run_mod",
+       "stat": "damage",
+       "op": "add",
+       "value": 2.0
+      },
+      {
+       "type": "testimony",
+       "id": "devil_deal"
+      }
+     ]
+    },
+    {
+     "label": "Продать удачу: +8 монет, удача -1",
+     "result": "Монеты тёплые. Удача — холодная и далёкая.",
+     "effects": [
+      {
+       "type": "coins",
+       "value": 8
+      },
+      {
+       "type": "run_mod",
+       "stat": "luck",
+       "op": "add",
+       "value": -1.0
+      },
+      {
+       "type": "sin",
+       "name": "greed",
+       "value": 2
+      }
+     ]
+    },
+    {
+     "label": "Уйти",
+     "result": "Ты уходишь. Договор остаётся лежать открытым.",
+     "effects": []
+    }
+   ]
   }
  ]
 }

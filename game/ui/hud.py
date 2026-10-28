@@ -121,7 +121,12 @@ def _draw_active(surf, play, sprites, corner):
     if not p.inv.active_id:
         return
     surf.blit(sprites.icon(p.inv.active_id), (box.x + 4, box.y + 4))
-    if p.inv.active_cd > 0:
+    if p.inv.kills_left > 0:   # предмет заряжается убийствами (Аптечка): показываем, сколько осталось
+        veil = pygame.Surface((22, 22), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 150))
+        surf.blit(veil, box.topleft)
+        draw_text(surf, str(p.inv.kills_left), box.center, "gold", 12, "center")
+    elif p.inv.active_cd > 0:
         h = int(22 * min(1, p.inv.active_cd / play.active_cooldown))
         veil = pygame.Surface((22, h), pygame.SRCALPHA)
         veil.fill((0, 0, 0, 150))

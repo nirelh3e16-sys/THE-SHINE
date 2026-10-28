@@ -179,5 +179,61 @@
   "proj_speed": 120,
   "sprite": "glitchling",
   "coin": 0.5
+ },
+ "hellhound": {
+  "name": "Адская гончая",
+  "hp": 16,
+  "speed": 98,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "chase",
+  "sprite": "hellhound",
+  "coin": 0.3
+ },
+ "fire_imp": {
+  "name": "Огненный бесёнок",
+  "hp": 18,
+  "speed": 58,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "burst",
+  "proj_speed": 140,
+  "sprite": "fire_imp",
+  "coin": 0.45
+ },
+ "magma_golem": {
+  "name": "Магматический голем",
+  "hp": 52,
+  "speed": 28,
+  "radius": 10,
+  "contact": 2,
+  "behavior": "chase",
+  "sprite": "golem",
+  "coin": 0.7
+ },
+ "ember": {
+  "name": "Уголёк",
+  "hp": 20,
+  "speed": 0,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "blink",
+  "proj_speed": 125,
+  "sprite": "ember",
+  "coin": 0.5
+ },
+ "idol": {
+  "name": "Идол пепла",
+  "hp": 30,
+  "speed": 0,
+  "radius": 8,
+  "contact": 1,
+  "behavior": "shoot",
+  "fire": 2.2,
+  "proj_speed": 90,
+  "spread": 5,
+  "spread_step": 0.26,
+  "sprite": "idol",
+  "coin": 0.5
  }
 }
