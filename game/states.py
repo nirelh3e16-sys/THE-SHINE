@@ -6,6 +6,7 @@ import pygame
 
 from .ui.menus import Menu
 from .settings import PUBLISHER
+from .graphics_settings import cycle as gfx_cycle, TIME_LABELS, STRENGTH_LABELS, BRIGHTNESS_LABELS
 from .systems.characters import progress as char_progress
 from .world.zones import ZONES
 from .ui.text import draw_text, wrap
@@ -109,8 +110,8 @@ class MenuState:
         surf.blit(self.backdrop, (0, 0))
         self.menu.draw(surf)
         data = self.game.save.data
-        draw_text(surf, PUBLISHER, (8, GAME_H - 20), "gold", 11)
-        draw_text(surf, f"Забегов: {data['runs']}   Побед: {data['wins']}   Концовки: {len(set(data['endings']))}/3",
+        draw_text(surf, PUBLISHER, (8, 8), "gold", 13)
+        draw_text(surf, f"Забегов: {data['runs']}   Побед: {data['wins']}   Концовки: {len(set(data['endings']))}/5",
                   (8, GAME_H - 8), "grey", 9, "bottomleft")
 
 
@@ -127,6 +128,7 @@ class SettingsState:
             (f"Громкость: {int(g.audio.volume * 100)}%", self.volume),
             (f"Тряска экрана: {'вкл' if g.effects.shake_enabled else 'выкл'}", self.shake),
             ("Края экрана: " + ("размытие" if g.display.fill_mode == "blur" else "растянуть"), self.fill),
+            ("Графика и эффекты", g.go_graphics),
             ("Полный экран (F11)", g.display.toggle_fullscreen),
             ("Назад", g.go_menu),
         ])
@@ -332,6 +334,24 @@ ENDINGS = {
                   ("Теперь ты знаешь, как это работает.", 4.0), ("Ты разбиваешь нимб. Врата закрываются. Никто не входит.", 5.0)],
         "after": "Утром кто-то открыл занавески.",
     },
+    # Злая концовка: после победы над Бесом. Открывает Небеса (портал после The Shine ведёт туда)
+    "evil": {
+        "title": "EVIL ENDING", "color": "red", "credits": False,
+        "pages": [("ЭТО ЕЩЁ НЕ КОНЕЦ! ЭТО ЕЩЁ НЕ КОНЕЦ! ЭТО ЕЩЁ НЕ КОНЕЦ! ЭТО ЕЩЁ НЕ КОНЕЦ! ЭТО ЕЩЁ НЕ КОНЕЦ!", 5.5),
+                  ("ЭТО НЕ КОНЕЦ.", 2.5), ("не конец.", 2.0), ("конец?", 2.0), ("НЕТ!", 2.5)],
+        "after": "Дьявол ждёт тебя среди персонажей.",
+    },
+    # Истинная концовка: после победы над Богом. Открывает персонажа Душа
+    "true": {
+        "title": "TRUE ENDING", "color": "blue", "credits": True,
+        "pages": [("Душа страдальца была отвергнута и светом, и тьмой.", 4.5),
+                  ("Душе было нечего делать, кроме как раствориться в ничто.", 4.5), ("", 1.5),
+                  ("Но вдруг из ничего появилась некая сущность — «Баланс».", 4.5),
+                  ("Её невозможно увидеть. Некому — кроме души, что страдала всю свою жизнь.", 5.0),
+                  ("Баланс восстановился. Ад и рай снова существуют.", 4.5),
+                  ("Время обратилось вспять — на неделю, — и душа вернулась в своё многомодальное тело.", 6.5)],
+        "after": "Душа ждёт тебя среди персонажей.",
+    },
 }
 
 
@@ -366,7 +386,7 @@ class EndingState:
             self._next()
 
     def draw(self, surf):
-        bg = {"good": (16, 12, 34), "bad": (24, 6, 10), "secret": (8, 12, 30)}[self.kind]
+        bg = {"good": (16, 12, 34), "bad": (24, 6, 10), "secret": (8, 12, 30), "evil": (14, 0, 2), "true": (6, 10, 28)}[self.kind]
         surf.fill(bg)
         if self.idx >= len(self.pages):
             return
@@ -383,8 +403,15 @@ class EndingState:
         if not text:
             return
         shade = int(255 * fade)
+        if self.kind == "evil":   # злая концовка: красный текст дрожит и «ломается»
+            for i, line in enumerate(wrap(text, 400, 16)):
+                jitter = (random.randint(-2, 2), random.randint(-2, 2)) if self.idx < 1 or random.random() < 0.3 else (0, 0)
+                draw_text(surf, line, (GAME_W // 2 + jitter[0], 100 + i * 20 + jitter[1]), (shade, int(shade * 0.1), int(shade * 0.1)), 16, "center")
+            return
         for i, line in enumerate(wrap(text, 380, 14)):
             col = (shade, shade, shade) if self.kind != "good" else (shade, int(shade * 0.92), int(shade * 0.7))
+            if self.kind == "true":
+                col = (int(shade * 0.85), int(shade * 0.92), shade)
             draw_text(surf, line, (GAME_W // 2, GAME_H - 80 + i * 17), col, 14, "center")
 
 
@@ -500,8 +527,13 @@ class CharacterSelectState:
         surf.blit(big, big.get_rect(center=(panel.x + 44, panel.y + 52)))
         if locked:
             kills, need = char_progress(char, g.save.data)
-            boss = ZONES[[z for z in ZONES if ZONES[z].get("boss") == char["unlock"]["boss"]][0]]["boss_name"].title()
             draw_text(surf, "ЗАКРЫТО", (panel.x + 96, panel.y + 14), "red", 13)
+            if "ending" in char["unlock"]:   # открывается концовкой, а не победами над боссом
+                name = ENDINGS[char["unlock"]["ending"]]["title"]
+                for i, line in enumerate(wrap(f"Открой концовку {name}.", panel.width - 108, 11)):
+                    draw_text(surf, line, (panel.x + 96, panel.y + 34 + i * 13), "white", 11)
+                return
+            boss = ZONES[[z for z in ZONES if ZONES[z].get("boss") == char["unlock"]["boss"]][0]]["boss_name"].title()
             for i, line in enumerate(wrap(f"Победи босса «{boss}» {need} раз.", panel.width - 108, 11)):
                 draw_text(surf, line, (panel.x + 96, panel.y + 34 + i * 13), "white", 11)
             draw_text(surf, f"Прогресс: {min(kills, need)}/{need}", (panel.x + 96, panel.y + 66), "gold", 11)
@@ -525,3 +557,53 @@ class CharacterSelectState:
             surf.blit(g.sprites.icon(item_id), (panel.x + 8, panel.y + 164 + i * 16))
             draw_text(surf, g.data.items.items[item_id].name, (panel.x + 28, panel.y + 164 + i * 16), "white", 10)
         draw_text(surf, "Enter — начать, Esc — назад", (GAME_W // 2, GAME_H - 6), "grey", 9, "midbottom")
+
+
+class GraphicsSettingsState:
+    """Настройки теней, света, бликов и времени суток. Каждый эффект можно отключить отдельно."""
+
+    def __init__(self, game, back_state=None):
+        self.game = game
+        self.back_state = back_state
+        self.menu = None
+        self._build()
+
+    def _toggle(self, key):
+        gfx_cycle(self.game.gfx, key)
+        self.game.save_graphics()
+        self._build()
+
+    def back(self):
+        self.game.state = self.back_state if self.back_state is not None else SettingsState(self.game)
+
+    def _build(self):
+        g = self.game.gfx
+        sel = self.menu.selected if self.menu else 0
+        onoff = lambda v: "ВКЛ" if v else "выкл"
+        entries = [
+            (f"Шейдеры (всё сразу): {onoff(g['shaders'])}", lambda: self._toggle("shaders")),
+            (f"Тени: {onoff(g['shadows'])}", lambda: self._toggle("shadows")),
+            (f"Сила теней: {STRENGTH_LABELS[g['shadow_strength']]}", lambda: self._toggle("shadow_strength")),
+            (f"Блики и лучи солнца: {onoff(g['sun_glare'])}", lambda: self._toggle("sun_glare")),
+            (f"Свет игрока и боссов: {onoff(g['lights'])}", lambda: self._toggle("lights")),
+            (f"Время суток: {TIME_LABELS[g['time_mode']]}", lambda: self._toggle("time_mode")),
+            (f"Яркость ночи: {BRIGHTNESS_LABELS[g['night_brightness']]}", lambda: self._toggle("night_brightness")),
+            ("Назад", self.back),
+        ]
+        self.menu = Menu("ГРАФИКА", entries, top=62, step=24, title_y=26)
+        self.menu.selected = min(sel, len(entries) - 1)
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.back()
+        else:
+            self.menu.handle_event(event)
+
+    def update(self, dt):
+        pass
+
+    def draw(self, surf):
+        surf.fill((24, 16, 40))
+        self.menu.draw(surf)
+        draw_text(surf, "Без света ночью почти ничего не видно — яркость ночи можно поднять", (GAME_W // 2, GAME_H - 6),
+                  "grey", 9, "midbottom")

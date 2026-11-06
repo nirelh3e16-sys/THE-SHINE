@@ -19,11 +19,13 @@ def _connect(a, direction, b):
     b.doors[OPP[direction]] = a.pos
 
 
-def generate_layout(n_rooms, rng, extra_kinds=(), house=False):
+def generate_layout(n_rooms, rng, extra_kinds=(), house=False, mini_kind=None):
     """Дерево комнат: все комнаты связаны дверями, выход всегда существует.
 
     extra_kinds — дополнительные особые комнаты (например "house") вместо обычных боевых.
     house=True — режим мини-данжа дома: 3+ комнаты, вместо босса — комната с наградой.
+    mini_kind — вид комнаты мини-босса (обычно "miniboss"): она ставится прямо перед комнатой босса
+    (в доме — перед комнатой с наградой), потому что к боссу можно пройти только через неё.
     """
     n_rooms = max(3 if house else 5, n_rooms)
     rooms = {(0, 0): RoomSpec((0, 0), "start", depth=0)}
@@ -44,7 +46,7 @@ def generate_layout(n_rooms, rng, extra_kinds=(), house=False):
         rooms[new_pos] = spec
         _connect(rooms[base], d, spec)
         order.append(new_pos)
-    _assign_kinds(rooms, rng)
+    _assign_kinds(rooms, rng, mini_kind)
     if house:
         remap = {"boss": "treasure", "shop": "combat", "treasure": "combat", "event": "combat"}
         for spec in rooms.values():
@@ -56,18 +58,34 @@ def generate_layout(n_rooms, rng, extra_kinds=(), house=False):
     return rooms
 
 
-def _assign_kinds(rooms, rng):
+def miniboss_host(rooms, boss):
+    """Комната, через которую входят к боссу (его «родитель» в дереве), либо None, если это старт."""
+    parent = next((rooms[pos] for pos in sorted(boss.doors.values()) if rooms[pos].depth < boss.depth), None)
+    if parent is None or parent.pos == (0, 0):
+        return None
+    return parent
+
+
+def _assign_kinds(rooms, rng, mini_kind=None):
     start = rooms[(0, 0)]
     cand = [r for r in rooms.values() if r is not start]
     leaves = sorted((r for r in cand if len(r.doors) == 1), key=lambda r: (-r.depth, r.pos))
     inner = sorted((r for r in cand if len(r.doors) > 1), key=lambda r: r.pos)
     boss = leaves[0] if leaves else max(cand, key=lambda r: (r.depth, r.pos))
     boss.kind = "boss"
-    slots = [r for r in leaves if r is not boss]
+    mini = None
+    if mini_kind:
+        mini = miniboss_host(rooms, boss)
+        if mini is None:   # босс прямо у старта: берём самую глубокую из остальных комнат
+            others = sorted((r for r in cand if r is not boss), key=lambda r: (-r.depth, r.pos))
+            mini = others[0] if others else None
+        if mini is not None:
+            mini.kind = mini_kind
+    slots = [r for r in leaves if r is not boss and r is not mini]
     rng.shuffle(slots)
     rng.shuffle(inner)
     slots += inner
-    slots = [r for r in slots if r is not boss]
+    slots = [r for r in slots if r is not boss and r is not mini]
     wanted = ["treasure", "shop", "event"]
     if len(rooms) >= 8:
         wanted.append("event")
@@ -111,12 +129,12 @@ def validate_layout(rooms, require_boss=True):
 class Dungeon:
     """Раскладка зоны + раздача уникальных предметов + данные для миникарты."""
 
-    def __init__(self, seed, n_rooms, item_ids, extra_kinds=(), house=False, arena=False):
+    def __init__(self, seed, n_rooms, item_ids, extra_kinds=(), house=False, arena=False, mini_kind=None):
         rng = random.Random(seed)
         if arena:  # финал: одна комната босса без дверей
             self.specs = {(0, 0): RoomSpec((0, 0), "boss", {}, 0)}
         else:
-            self.specs = generate_layout(n_rooms, rng, extra_kinds, house)
+            self.specs = generate_layout(n_rooms, rng, extra_kinds, house, mini_kind)
         pool = list(item_ids)
         rng.shuffle(pool)
         self._item_pool = pool
@@ -148,6 +166,6 @@ class Dungeon:
         if compass:
             if pos == self.false_mark:
                 return "treasure"
-            if spec.kind in ("treasure", "shop", "boss", "event", "house"):
+            if spec.kind in ("treasure", "shop", "boss", "event", "house", "miniboss"):
                 return spec.kind
         return "unknown"

@@ -7,11 +7,12 @@ from ..systems.morality import TESTIMONIES
 
 
 class Menu:
-    def __init__(self, title, entries, corner=False):
+    def __init__(self, title, entries, corner=False, top=120, step=22, title_y=50):
         self.title = title
         self.entries = entries  # [(label, callback)]
         self.selected = 0
         self.corner = corner    # True — название и кнопки прижаты к правому нижнему углу
+        self.top, self.step, self.title_y = top, step, title_y
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -33,7 +34,7 @@ class Menu:
     def _y(self, i):
         if self.corner:
             return GAME_H - 22 - (len(self.entries) - 1 - i) * 24
-        return 120 + i * 22
+        return self.top + i * self.step
 
     def draw(self, surf):
         if self.corner:
@@ -43,7 +44,7 @@ class Menu:
                 draw_text(surf, (label + " <") if sel else label, (GAME_W - 14, self._y(i)),
                           "gold" if sel else "white", 15, "midright")
             return
-        draw_text(surf, self.title, (GAME_W // 2, 50), "gold", 26, "center")
+        draw_text(surf, self.title, (GAME_W // 2, self.title_y), "gold", 26, "center")
         for i, (label, _) in enumerate(self.entries):
             sel = i == self.selected
             draw_text(surf, ("> " if sel else "") + label + (" <" if sel else ""), (GAME_W // 2, self._y(i)),

@@ -80,7 +80,7 @@ class LayoutTests(unittest.TestCase):
             self.assertIn(kind, enemies)
 
     def test_zone_order(self):
-        self.assertEqual(ZONE_ORDER, ["forest", "suburbs", "city", "center", "shine", "hell"])
+        self.assertEqual(ZONE_ORDER, ["forest", "suburbs", "city", "center", "shine", "hell", "heaven"])
 
     def test_center_zone_music_and_boss_keys(self):
         z = ZONES["center"]
@@ -349,7 +349,7 @@ class CharacterTests(unittest.TestCase):
         return self.db.stats(c["start_items"], c["mods"])
 
     def test_five_plus_default_characters(self):
-        self.assertEqual(list(self.chars), ["rob", "lumberjack", "tom", "bigshot", "glitch", "angel", "devil"])
+        self.assertEqual(list(self.chars), ["rob", "lumberjack", "tom", "bigshot", "glitch", "angel", "devil", "soul"])
         self.assertIsNone(self.chars["rob"]["unlock"])
 
     def test_hearts_match_design(self):
@@ -394,9 +394,11 @@ class CharacterTests(unittest.TestCase):
         self.assertFalse(is_unlocked(self.chars["tom"], save))                                # другой босс — другой персонаж
 
     def test_each_character_has_own_boss(self):
-        bosses = [c["unlock"]["boss"] for c in self.chars.values() if c["unlock"]]
+        bosses = [c["unlock"]["boss"] for c in self.chars.values() if c["unlock"] and "boss" in c["unlock"]]
         self.assertEqual(bosses, ["lumberjack", "neighbor", "mayor", "chaos", "shine", "imp"])
-        self.assertTrue(all(c["unlock"]["kills"] == 10 for c in self.chars.values() if c["unlock"] and c["id"] != "devil"))
+        self.assertTrue(all(c["unlock"]["kills"] == 10 for c in self.chars.values()
+                            if c["unlock"] and "boss" in c["unlock"] and c["id"] != "devil"))
+        self.assertEqual(self.chars["soul"]["unlock"], {"ending": "true"})   # Душа открывается True Ending
         self.assertEqual(self.chars["devil"]["unlock"]["kills"], 1)   # Дьявол открывается с первой победы над Бесом
 
     def test_devil_is_fast_and_unlocks_after_first_imp_kill(self):
@@ -501,6 +503,106 @@ class InventoryKillRechargeTests(unittest.TestCase):
         inv.tick(100)    # время на такую перезарядку не влияет
         inv.register_kill()
         self.assertEqual(inv.kills_left, 0)
+
+
+class DayCycleTests(unittest.TestCase):
+    def test_run_starts_at_dawn_with_little_sun(self):
+        from game.daycycle import day_state
+        st = day_state(0.0)
+        self.assertTrue(0 < st.elevation < 0.15)            # солнце только поднимается
+        self.assertGreater(st.tint[0], st.tint[2])          # тёплый красноватый рассвет
+        self.assertLess(st.sun_dx, -0.9)                    # солнце у левого горизонта
+
+    def test_day_peak_sunset_and_night(self):
+        from game.daycycle import day_state
+        noon, sunset, night = day_state(0.25), day_state(0.52), day_state(0.75)
+        self.assertEqual(noon.elevation, 1.0)
+        self.assertEqual(noon.darkness, 0.0)
+        self.assertEqual(noon.tint, (255, 255, 245))
+        self.assertLess(sunset.elevation, 0.2)
+        self.assertGreater(sunset.sun_dx, 0.9)              # закат справа
+        self.assertLessEqual(night.elevation, 0)
+        self.assertGreaterEqual(night.darkness, 0.7)
+        self.assertFalse(night.has_sun)
+
+    def test_cycle_is_continuous_and_loops(self):
+        from game.daycycle import day_state
+        prev = day_state(0.0)
+        for i in range(1, 1001):
+            cur = day_state(i / 1000)
+            self.assertLess(abs(cur.darkness - prev.darkness), 0.05)
+            self.assertLess(abs(cur.elevation - prev.elevation), 0.06)
+            prev = cur
+        self.assertEqual(day_state(1.0).tint, day_state(0.0).tint)
+        self.assertEqual(day_state(1.25).elevation, day_state(0.25).elevation)
+
+    def test_shadows_are_longer_and_flipped_at_low_sun(self):
+        from game.daycycle import day_state, shadow_params
+        dx_m, _, len_m, str_m = shadow_params(day_state(0.04))     # утро
+        dx_n, _, len_n, str_n = shadow_params(day_state(0.25))     # полдень
+        dx_e, _, len_e, _ = shadow_params(day_state(0.50))         # вечер
+        self.assertGreater(len_m, len_n)
+        self.assertGreater(len_e, len_n)
+        self.assertGreater(dx_m, 0)                                  # утром тень падает вправо
+        self.assertLess(dx_e, 0)                                     # вечером — влево
+        self.assertAlmostEqual(dx_n, 0, delta=0.15)                  # в полдень почти строго вниз
+        self.assertEqual(shadow_params(day_state(0.75)), (0.0, 0.0, 0.0, 0.0))   # ночью солнечных теней нет
+
+    def test_indoor_zones_are_dark_like_night_and_outdoor_follow_clock(self):
+        from game.daycycle import effective_state
+        from game.world.zones import ZONES
+        for zid in ("house", "hell", "shine"):
+            st = effective_state(ZONES[zid], 120.0, time_mode="day")
+            self.assertFalse(st.outdoor)
+            self.assertFalse(st.has_sun)                              # нет солнца даже «днём»
+            self.assertGreaterEqual(st.darkness, 0.6)
+        for zid in ("forest", "suburbs", "city", "center"):
+            self.assertTrue(ZONES[zid]["outdoor"])
+        day = effective_state(ZONES["forest"], 0, time_mode="day")
+        night = effective_state(ZONES["forest"], 0, time_mode="night")
+        self.assertLess(day.darkness, 0.1)
+        self.assertGreater(night.darkness, 0.6)
+        auto0 = effective_state(ZONES["forest"], 0.0, 480.0)
+        auto_noon = effective_state(ZONES["forest"], 480 * 0.25, 480.0)
+        self.assertGreater(auto0.darkness, auto_noon.darkness)
+
+    def test_night_brightness_and_lights_off_keep_game_playable(self):
+        from game.daycycle import effective_state
+        from game.world.zones import ZONES
+        dark = effective_state(ZONES["forest"], 0, time_mode="night", night_mult=1.0)
+        light = effective_state(ZONES["forest"], 0, time_mode="night", night_mult=0.6)
+        self.assertLess(light.darkness, dark.darkness)
+        no_lights = effective_state(ZONES["hell"], 0, lights_on=False)
+        self.assertLessEqual(no_lights.darkness, 0.35)               # без света нельзя оставлять почти чёрный экран
+
+
+class GraphicsSettingsTests(unittest.TestCase):
+    def test_defaults_and_sanitize(self):
+        from game.graphics_settings import sanitize, DEFAULTS
+        self.assertEqual(sanitize(None), DEFAULTS)
+        cfg = sanitize({"shadows": False, "shadow_strength": 2, "time_mode": "night", "night_brightness": 7, "sun_glare": "yes", "junk": 1})
+        self.assertFalse(cfg["shadows"])
+        self.assertEqual(cfg["shadow_strength"], 2)
+        self.assertEqual(cfg["time_mode"], "night")
+        self.assertEqual(cfg["night_brightness"], DEFAULTS["night_brightness"])   # некорректное значение заменено
+        self.assertTrue(cfg["sun_glare"])
+        self.assertNotIn("junk", cfg)
+
+    def test_every_effect_can_be_toggled_independently(self):
+        from game.graphics_settings import sanitize, cycle, TIME_MODES
+        cfg = sanitize(None)
+        for key in ("shaders", "shadows", "sun_glare", "lights"):
+            before = dict(cfg)
+            cycle(cfg, key)
+            self.assertNotEqual(cfg[key], before[key])
+            self.assertEqual({k: v for k, v in cfg.items() if k != key}, {k: v for k, v in before.items() if k != key})
+        seen = {cfg["time_mode"]}
+        for _ in range(len(TIME_MODES)):
+            seen.add(cycle(cfg, "time_mode"))
+        self.assertEqual(seen, set(TIME_MODES))
+        for _ in range(3):
+            cycle(cfg, "shadow_strength")
+        self.assertEqual(cfg["shadow_strength"], sanitize(None)["shadow_strength"])   # цикл из трёх значений
 
 
 class StatsViewTests(unittest.TestCase):
@@ -834,6 +936,696 @@ class HellTests(unittest.TestCase):
         p.inv.add(db.items["angel_wings"])
         p.recompute()
         self.assertTrue(p.ghost and p.gravity_immune)
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class LightingRenderTests(unittest.TestCase):
+    def setUp(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        import pygame
+        from game.graphics_settings import sanitize
+        from game.lighting import Lighting
+        self.pygame, self.gfx, self.light = pygame, sanitize(None), Lighting()
+
+    def _frame(self):
+        surf = self.pygame.Surface((480, 270))
+        surf.fill((200, 200, 200))
+        return surf
+
+    def test_shadow_darkens_ground_next_to_actor_only_with_sun(self):
+        from game.daycycle import day_state
+        v = self.pygame.Vector2
+        morning = self._frame()
+        self.light.draw_shadows(morning, v(0, 0), [(240, 135, 14, 16)], day_state(0.04), self.gfx)
+        self.assertLess(morning.get_at((250, 137))[0], 200)            # утром тень лежит справа от моба
+        self.assertEqual(morning.get_at((225, 137))[0], 200)           # а слева — чисто
+        self.assertEqual(morning.get_at((20, 20))[0], 200)             # далеко от моба кадр не тронут
+        night = self._frame()
+        self.light.draw_shadows(night, v(0, 0), [(240, 135, 14, 16)], day_state(0.75), self.gfx)
+        self.assertEqual(night.get_at((250, 137))[0], 200)             # ночью солнечных теней нет
+
+    def test_night_is_dark_but_player_light_reveals_surroundings(self):
+        from game.daycycle import effective_state
+        from game.world.zones import ZONES
+        state = effective_state(ZONES["forest"], 0, time_mode="night")
+        surf = self._frame()
+        self.light.apply(surf, state, [(240, 135, 70, (255, 236, 190), 1.0)], self.gfx)
+        near, far = surf.get_at((240, 135)), surf.get_at((15, 15))
+        self.assertGreater(sum(near[:3]), sum(far[:3]) * 2)             # рядом со светом заметно ярче
+        self.assertLess(sum(far[:3]), 3 * 100)                          # вдали темно
+
+    def test_lights_off_does_not_crash_and_sun_glare_brightens_day(self):
+        from game.daycycle import effective_state
+        from game.world.zones import ZONES
+        gfx = dict(self.gfx, sun_glare=False)
+        state = effective_state(ZONES["forest"], 0, time_mode="day")
+        plain = self._frame()
+        self.light.apply(plain, state, [], gfx)
+        glare = self._frame()
+        self.light.apply(glare, state, [], dict(gfx, sun_glare=True))
+        self.assertGreaterEqual(sum(glare.get_at((100, 20))[:3]), sum(plain.get_at((100, 20))[:3]))
+        self.light.apply(self._frame(), effective_state(ZONES["hell"], 0), [(100, 100, 50, (255, 100, 30), 1.0)], dict(gfx, lights=False))
+
+
+class MiniBossLayoutTests(unittest.TestCase):
+    """Мини-босс стоит в комнате прямо перед комнатой босса (в доме — перед наградой)."""
+
+    @staticmethod
+    def _reachable_without(rooms, banned):
+        seen, stack = {(0, 0)}, [(0, 0)]
+        while stack:
+            for nxt in rooms[stack.pop()].doors.values():
+                if nxt != banned and nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
+        return seen
+
+    def test_miniboss_blocks_the_way_to_the_boss(self):
+        from game.world.dungeon import miniboss_host
+        for seed in range(300):
+            rooms = generate_layout(5 + seed % 8, random.Random(seed), mini_kind="miniboss")
+            self.assertEqual(validate_layout(rooms), [], f"seed={seed}")
+            minis = [r for r in rooms.values() if r.kind == "miniboss"]
+            self.assertEqual(len(minis), 1, f"seed={seed}")
+            boss = next(r for r in rooms.values() if r.kind == "boss")
+            if miniboss_host(rooms, boss) is not None:
+                self.assertIn(minis[0].pos, boss.doors.values(), f"seed={seed}")
+                self.assertNotIn(boss.pos, self._reachable_without(rooms, minis[0].pos), f"seed={seed}")
+
+    def test_no_miniboss_without_request_and_specials_survive(self):
+        for seed in range(100):
+            rooms = generate_layout(9, random.Random(seed))
+            self.assertFalse(any(r.kind == "miniboss" for r in rooms.values()))
+            kinds = {r.kind for r in generate_layout(9, random.Random(seed), mini_kind="miniboss").values()}
+            self.assertTrue({"start", "boss", "miniboss", "treasure", "shop"} <= kinds, f"seed={seed}")
+
+    def test_house_has_miniboss_before_reward(self):
+        from game.world.dungeon import miniboss_host
+        for seed in range(200):
+            d = Dungeon(f"h{seed}", 3 + seed % 2, ["broom", "old_tv"], house=True, mini_kind="miniboss")
+            self.assertEqual(validate_layout(d.specs, require_boss=False), [], f"seed={seed}")
+            kinds = [s.kind for s in d.specs.values()]
+            self.assertEqual(kinds.count("miniboss"), 1)
+            self.assertEqual(kinds.count("treasure"), 1)
+            reward = next(s for s in d.specs.values() if s.kind == "treasure")
+            if miniboss_host(d.specs, reward) is not None:
+                mini = next(s for s in d.specs.values() if s.kind == "miniboss")
+                self.assertIn(mini.pos, reward.doors.values())
+
+    def test_zone_config(self):
+        self.assertEqual(ZONES["forest"]["miniboss"], "living_spruce")
+        self.assertEqual(ZONES["city"]["miniboss"], "tank")
+        self.assertEqual(ZONES["suburbs"]["house_miniboss"], "landlord")
+        self.assertEqual(ZONES["house"]["miniboss"], "landlord")
+        for zid in ("center", "hell", "shine"):
+            self.assertNotIn("miniboss", ZONES[zid])
+
+
+class MiniBossItemTests(unittest.TestCase):
+    def setUp(self):
+        self.db = ItemDatabase.from_file()
+
+    def test_drops_exist_and_are_drop_only(self):
+        for item_id in ("thorn_cannon", "old_remote", "kevlar_vest"):
+            self.assertTrue(self.db.items[item_id].drop_only, item_id)
+        self.assertNotIn("thorn_cannon", self.db.regular_ids())
+        for seed in range(100):
+            for opt in self.db.card_options([], random.Random(seed)):
+                self.assertFalse(self.db.items[opt].drop_only)
+
+    def test_vest_adds_three_hearts_and_armor_flag(self):
+        self.assertEqual(self.db.stats(["kevlar_vest"])["max_hp"], BASE_STATS["max_hp"] + 6)
+        self.assertIn("armor", self.db.flags(["kevlar_vest"]))
+
+    def test_new_combos(self):
+        self.assertIn("thorn_fury", self.db.flags(["thorn_cannon", "smg"]))
+        self.assertNotIn("thorn_fury", self.db.flags(["thorn_cannon"]))
+        self.assertIn("channel_loot", self.db.flags(["old_remote", "old_tv"]))
+        self.assertIn("homing", self.db.flags(["old_remote"]))
+        for item_id in ("thorn_cannon", "old_remote", "kevlar_vest"):
+            self.assertIn(item_id, {i for c in self.db.combos for i in c["needs"]} | {"kevlar_vest"})
+
+    def test_drop_items_have_names_and_icons_defined(self):
+        for item_id in ("thorn_cannon", "old_remote", "kevlar_vest"):
+            self.assertTrue(self.db.items[item_id].name)
+            self.assertIn(self.db.items[item_id].icon, ("thorn", "remote", "vest"))
+
+
+class NeedlesTests(unittest.TestCase):
+    def test_stab_only_when_moving_and_expires_after_three_seconds(self):
+        from game.systems.needles import Needles
+        n = Needles()
+        self.assertEqual(n.update(0.1, 0, 0), 0)          # иголок нет
+        n.add()
+        self.assertEqual(n.update(0.1, 0, 0), 0)          # запомнили позицию
+        self.assertEqual(n.update(0.1, 0, 0), 0)          # стоит на месте — не колет
+        self.assertEqual(n.update(0.1, 30, 0), 1)         # сдвинулся — укол
+        self.assertEqual(n.update(0.1, 31, 0), 0)         # мелкий шаг копится
+        n.update(2.9, 31, 0)
+        self.assertEqual(n.count, 0)                      # через 3 секунды иголка выпала
+        self.assertEqual(n.update(0.1, 90, 0), 0)         # без иголок движение безопасно
+
+    def test_damage_grows_with_three_needles_and_stack_is_limited(self):
+        from game.systems.needles import Needles, MAX_STUCK
+        n = Needles()
+        n.add(2)
+        self.assertEqual(n.stab_damage(), 1)
+        n.add()
+        self.assertEqual(n.stab_damage(), 2)
+        n.add(20)
+        self.assertEqual(n.count, MAX_STUCK)
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class MiniBossBehaviorTests(unittest.TestCase):
+    class FakeRoom:
+        def __init__(self):
+            from game.entities.enemy import load_enemy_defs
+            self.hazards, self.notices, self.enemies, self.spawn_requests = [], [], [], []
+            self.shake_request = None
+            self.data = SimpleNamespace(enemies=load_enemy_defs())
+
+        def confine(self, pos, r):
+            pos.x = max(24 + r, min(24 + 432 - r, pos.x))
+            pos.y = max(32 + r, min(32 + 208 - r, pos.y))
+            return False
+
+    def setUp(self):
+        import pygame
+        random.seed(5)
+        self.V = pygame.Vector2
+        self.room = self.FakeRoom()
+        self.player = SimpleNamespace(pos=self.V(380, 200))
+        self.shots = []
+
+    def shoot(self, pos, direction, speed, dmg, radius=3, color=(0, 0, 0), kind="shot"):
+        self.shots.append((self.t, kind, dmg, self.V(pos), self.V(direction) * speed))
+
+    def simulate(self, boss, seconds, dt=1 / 60):
+        self.t = 0.0
+        self.room.enemies = [boss] + [e for e in self.room.enemies if e is not boss]
+        while self.t < seconds:
+            for e in list(self.room.enemies):
+                e.update(dt, self.room, self.player, self.shoot)
+            for h in self.room.hazards:
+                h.update(dt)
+            self.t += dt
+
+    def make(self, kind):
+        from game.entities.miniboss import create_miniboss
+        boss = create_miniboss(kind, self.V(240, 90))
+        boss.spawn_t = 0
+        return boss
+
+    def test_all_three_exist_with_drops_and_names(self):
+        from game.entities.miniboss import MINIBOSSES, create_miniboss
+        self.assertEqual(set(MINIBOSSES), {"living_spruce", "landlord", "tank", "gate_keeper"})
+        drops = {k: MINIBOSSES[k].drop_item for k in MINIBOSSES}
+        self.assertEqual(drops, {"living_spruce": "thorn_cannon", "landlord": "old_remote", "tank": "kevlar_vest",
+                                 "gate_keeper": None})
+        for k in MINIBOSSES:
+            b = create_miniboss(k, self.V(100, 100))
+            self.assertTrue(b.is_miniboss)
+            self.assertFalse(getattr(b, "is_boss", False))   # не считается боссом зоны
+        with self.assertRaises(ValueError):
+            create_miniboss("nope", self.V(0, 0))
+
+    def test_spruce_shoots_harmless_needles_and_adds_roots_in_phase_two(self):
+        boss = self.make("living_spruce")
+        self.simulate(boss, 12)
+        needles = [s for s in self.shots if s[1] == "needle"]
+        self.assertGreater(len(needles), 8)
+        self.assertTrue(all(s[2] == 0 for s in needles))           # сами иголки урона не наносят
+        self.assertEqual(self.room.hazards, [])                    # корни — только во второй фазе
+        boss.hp = boss.max_hp * 0.4
+        self.simulate(boss, 25)
+        self.assertEqual(boss.phase, 2)
+        self.assertTrue(any(n[1] == "red" for n in self.room.notices) or self.room.notices)
+        self.assertTrue(any(h.kind == "drop" for h in self.room.hazards))
+
+    def test_landlord_throws_dogs_then_turns_on_tv_every_five_seconds(self):
+        boss = self.make("landlord")
+        self.simulate(boss, 8)
+        dogs = [e for e in self.room.enemies if e.kind == "mutant_dog"]
+        self.assertTrue(1 <= len(dogs) <= 4)
+        self.assertFalse(boss.tv_on)
+        self.assertEqual([s for s in self.shots if s[2] == 1 and s[1] == "shot"], [])   # до второй фазы телевизор молчит
+        boss.hp = boss.max_hp * 0.4
+        self.shots.clear()
+        self.simulate(boss, 18)
+        self.assertTrue(boss.tv_on)
+        times = sorted({round(s[0], 1) for s in self.shots})
+        bursts, last = [], None
+        for t in times:
+            if last is None or t - last > 0.5:
+                bursts.append(t)
+            last = t
+        self.assertGreaterEqual(len(bursts), 2)
+        gaps = [b - a for a, b in zip(bursts, bursts[1:])]
+        self.assertTrue(all(abs(g - 5.0) < 0.3 for g in gaps), gaps)      # ровно каждые 5 секунд
+        self.assertGreaterEqual(len([s for s in self.shots if round(s[0], 1) == bursts[0]]), 8)   # кластер
+
+    def test_landlord_tv_causes_interference_before_shooting(self):
+        boss = self.make("landlord")
+        boss.hp = boss.max_hp * 0.4
+        glitch_seen = False
+        self.t = 0.0
+        for _ in range(60 * 14):
+            boss.update(1 / 60, self.room, self.player, self.shoot)
+            glitch_seen = glitch_seen or boss.ui_glitch
+            self.t += 1 / 60
+        self.assertTrue(glitch_seen)
+
+    def test_tank_keeps_driving_to_player_and_fires_grenade_every_five_seconds(self):
+        boss = self.make("tank")
+        self.player.pos = self.V(400, 210)
+        start = boss.pos.distance_to(self.player.pos)
+        launched = []
+        self.t = 0.0
+        prev = 0
+        for _ in range(60 * 18):
+            boss.update(1 / 60, self.room, self.player, self.shoot)
+            if len(boss.shells) > prev or (boss.shells and boss.shells[-1]["t"] == 0.0):
+                launched.append(round(self.t, 1))
+            prev = len(boss.shells)
+            for h in self.room.hazards:
+                h.update(1 / 60)
+            self.t += 1 / 60
+        self.assertLess(boss.pos.distance_to(self.player.pos), start)      # едет к игроку
+        self.assertGreaterEqual(len(launched), 3)
+        gaps = [b - a for a, b in zip(launched, launched[1:])]
+        self.assertTrue(all(abs(g - 5.0) < 0.3 for g in gaps), launched)
+        self.assertTrue(any(h.kind == "blast" for h in self.room.hazards))
+
+    def test_tank_fires_three_grenades_in_second_phase(self):
+        boss = self.make("tank")
+        boss.hp = boss.max_hp * 0.4
+        self.simulate(boss, 3.0)
+        self.assertEqual(boss.phase, 2)
+        self.assertEqual(len(boss.shells), 3)
+
+    def test_minibosses_resist_knockback(self):
+        for kind in ("living_spruce", "landlord", "tank"):
+            boss = self.make(kind)
+            boss.take_damage(1, self.V(1, 0), 400)
+            self.assertLess(boss.knock.length(), 100, kind)
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class MiniBossItemEffectTests(unittest.TestCase):
+    def setUp(self):
+        import pygame
+        self.V = pygame.Vector2
+        self.db = ItemDatabase.from_file()
+
+    def _player(self, *items):
+        from game.entities.player import Player
+        p = Player(self.db)
+        for item_id in items:
+            p.inv.add(self.db.items[item_id])
+        p.recompute()
+        return p
+
+    def test_vest_absorbs_forty_percent_on_average_and_adds_hearts(self):
+        p = self._player("kevlar_vest")
+        self.assertEqual(p.max_hp, 12)
+        p.hp = 1000
+        for _ in range(100):
+            p.iframes = 0
+            self.assertTrue(p.hurt(1))
+        self.assertIn(1000 - p.hp, (59, 60))
+        plain = self._player()
+        plain.hp = 1000
+        plain.hurt(2)
+        self.assertEqual(plain.hp, 998)
+
+    def test_old_remote_makes_shots_homing_and_steers_towards_nearest_enemy(self):
+        from game.systems import combat
+        p = self._player("old_remote")
+        self.assertTrue(all(s.homing for s in combat.build_player_shots(p, self.V(1, 0))))
+        self.assertFalse(any(s.homing for s in combat.build_player_shots(self._player(), self.V(1, 0))))
+        shot = combat.build_player_shots(p, self.V(1, 0))[0]
+        shot.pos, shot.vel = self.V(100, 100), self.V(200, 0)
+        near, far = SimpleNamespace(pos=self.V(200, 160)), SimpleNamespace(pos=self.V(100, 900))
+        for _ in range(30):
+            combat.steer_homing(shot, [far, near], 1 / 60)
+        self.assertGreater(shot.vel.y, 20)
+        self.assertAlmostEqual(shot.vel.length(), 200, places=3)
+        calm = combat.build_player_shots(p, self.V(1, 0))[0]
+        calm.vel = self.V(200, 0)
+        combat.steer_homing(calm, [far], 1 / 60)
+        self.assertEqual(calm.vel.y, 0)
+
+    def test_thorn_cannon_and_fury_combo(self):
+        from game.systems import combat
+        plain = combat.thorn_shot(self._player("thorn_cannon"), self.V(0, 0), self.V(100, 0))[0]
+        fury = combat.thorn_shot(self._player("thorn_cannon", "smg"), self.V(0, 0), self.V(100, 0))[0]
+        self.assertEqual(plain.kind, "thorn")
+        self.assertFalse(plain.expire_explode)
+        self.assertTrue(fury.expire_explode)
+        self.assertGreater(fury.vel.length(), plain.vel.length() * 1.5)
+
+    def test_rooms_with_miniboss_spawn_it_alone(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.entities.enemy import load_enemy_defs
+        from game.world.room import Room
+        data = SimpleNamespace(items=self.db, enemies=load_enemy_defs(), events=load_events())
+        for zid, expected in (("forest", "living_spruce"), ("city", "tank")):
+            d = Dungeon(3, 8, self.db.regular_ids(), mini_kind="miniboss")
+            pos = next(q for q, sp in d.specs.items() if sp.kind == "miniboss")
+            room = Room(d.specs[pos], ZONES[zid], 3, data, [], zid + ":")
+            self.assertFalse(room.cleared)
+            room.enter(1.0)
+            self.assertEqual([e.kind for e in room.enemies], [expected])
+        house = Dungeon(4, 4, ["broom"], house=True, mini_kind="miniboss")
+        pos = next(q for q, sp in house.specs.items() if sp.kind == "miniboss")
+        room = Room(house.specs[pos], ZONES["house"], 4, data, [], "h:")
+        room.enter(1.0)
+        self.assertEqual([e.kind for e in room.enemies], ["landlord"])
+
+
+class HeavenConfigTests(unittest.TestCase):
+    def test_heaven_zone_and_side_zones(self):
+        from game.world.zones import SIDE_ZONES
+        z = ZONES["heaven"]
+        self.assertTrue(z["always_day"] and z["sky"] and z["passive_enemies"])
+        self.assertEqual((z["boss"], z["miniboss"], z["boss_cutscene"]), ("god", "gate_keeper", "god"))
+        self.assertTrue(z["final_boss"])
+        self.assertEqual((z["music_combat"], z["music_boss"]), ("heaven_combat", "god_boss"))
+        self.assertEqual(ZONES["hell"]["ends_run"], "evil")   # портал после Беса — злая концовка
+        self.assertEqual(set(SIDE_ZONES), {"hell", "heaven"})
+        self.assertIn("god_slain", TESTIMONIES)
+
+    @unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+    def test_music_tracks_are_registered_with_requested_files(self):
+        from game.systems.audio import MUSIC_TRACKS, MUSIC_FALLBACK
+        self.assertEqual(MUSIC_TRACKS["miniboss"], "mini-bosses.mp3")
+        self.assertEqual(MUSIC_TRACKS["heaven_combat"], "Heaven.mp3")
+        self.assertEqual(MUSIC_TRACKS["god_boss"], "God.mp3")
+        for key in ("miniboss", "heaven_combat", "god_boss"):
+            self.assertIn(MUSIC_FALLBACK[key], MUSIC_TRACKS)   # без файла играет запасной трек
+
+    def test_heaven_is_always_day(self):
+        from game.daycycle import effective_state
+        for clock in (0, 100, 250, 400, 470):
+            st = effective_state(ZONES["heaven"], clock, 480.0, "night")
+            self.assertTrue(st.has_sun, clock)
+            self.assertEqual(st.darkness, 0.0)
+        night = effective_state(ZONES["forest"], 0, 480.0, "night")   # у остальных улиц ночь остаётся ночью
+        self.assertGreater(night.darkness, 0.3)
+
+    @unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+    def test_endings_texts(self):
+        from game.states import ENDINGS
+        evil = " ".join(t for t, _ in ENDINGS["evil"]["pages"])
+        self.assertIn("ЭТО ЕЩЁ НЕ КОНЕЦ!", evil)
+        self.assertEqual(evil.count("ЭТО ЕЩЁ НЕ КОНЕЦ!"), 5)
+        self.assertIn("НЕТ!", evil)
+        self.assertFalse(ENDINGS["evil"]["credits"])
+        true = " ".join(t for t, _ in ENDINGS["true"]["pages"])
+        self.assertIn("«Баланс»", true)
+        self.assertIn("Ад и рай снова существуют", true)
+        self.assertTrue(ENDINGS["true"]["credits"])
+
+    def test_heaven_layout_has_gate_keeper_before_boss(self):
+        from game.world.dungeon import miniboss_host
+        for seed in range(100):
+            d = Dungeon(f"sky{seed}", 8, ["broom"], mini_kind="miniboss")
+            boss = next(r for r in d.specs.values() if r.kind == "boss")
+            host = miniboss_host(d.specs, boss)
+            if host is not None:
+                self.assertEqual(host.kind, "miniboss")
+
+
+class SoulCharacterTests(unittest.TestCase):
+    def setUp(self):
+        from game.systems.characters import load_characters
+        self.db = ItemDatabase.from_file()
+        self.chars = load_characters(self.db)
+        self.soul = self.chars["soul"]
+
+    def test_soul_stats_match_design(self):
+        stats = self.db.stats(self.soul["start_items"], self.soul["mods"])
+        self.assertEqual(stats["max_hp"], 1)                                   # полсердца
+        self.assertEqual(stats["speed"], BASE_STATS["speed"] * 2)             # скорость в 2 раза выше обычной
+        self.assertEqual(stats["damage"], 7.0)                                 # урон 7
+        self.assertEqual(self.soul["start_items"], ["balancer", "scream"])
+
+    def test_soul_unlocks_with_true_ending_only(self):
+        from game.systems.characters import is_unlocked, progress
+        self.assertFalse(is_unlocked(self.soul, {"endings": ["good", "secret", "evil"]}))
+        self.assertTrue(is_unlocked(self.soul, {"endings": ["true"]}))
+        self.assertEqual(progress(self.soul, {"endings": []}), (0, 1))
+        self.assertEqual(progress(self.soul, {"endings": ["true"]}), (1, 1))
+
+    def test_soul_items(self):
+        balancer, scream = self.db.items["balancer"], self.db.items["scream"]
+        self.assertIn("balancer", balancer.flags)
+        self.assertEqual(scream.active["type"], "scream")
+        self.assertGreater(scream.active["cooldown"], 0)
+        self.assertTrue(balancer.drop_only and scream.drop_only)               # только у Души
+
+    def test_bad_unlock_condition_is_rejected(self):
+        from game.systems.characters import load_characters
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chars.json"
+            data = json.loads((Path(__file__).resolve().parent.parent / "data" / "characters.json").read_text(encoding="utf-8"))
+            data["characters"][-1]["unlock"] = {"nothing": 1}
+            path.write_text(json.dumps(data), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                load_characters(self.db, path)
+
+
+class GeyserTests(unittest.TestCase):
+    def test_charge_needs_three_seconds_and_resets_on_early_release(self):
+        from game.systems.geyser import Charge
+        c = Charge()
+        for _ in range(29):
+            c.hold(0.1)
+        self.assertFalse(c.release())          # 2.9 с — мало
+        for _ in range(31):
+            c.hold(0.1)
+        self.assertTrue(c.ready)
+        self.assertTrue(c.release())
+        self.assertEqual(c.value, 0.0)
+
+    def test_range_is_25_blocks_and_scream_is_four_times_wider(self):
+        from game.systems.geyser import Geyser, RANGE
+        bal, scr = Geyser.balancer(), Geyser.scream()
+        self.assertEqual(RANGE, 25 * 16)
+        self.assertEqual(scr.width, bal.width * 4)
+        self.assertGreater(scr.duration, bal.duration)
+        self.assertGreater(scr.damage_mult, bal.damage_mult)
+        self.assertGreater(scr.recoil, 0)
+        self.assertEqual(bal.recoil, 0)
+
+    def test_geyser_follows_cursor_and_hits_along_beam_only(self):
+        from game.systems.geyser import Geyser
+        g = Geyser.balancer()
+        g.start((0, 0), (1, 0))
+        self.assertTrue(g.hits((300, 3), 2))
+        self.assertFalse(g.hits((300, 40), 2))             # в стороне от луча
+        self.assertFalse(g.hits((500, 0), 2))              # дальше 25 блоков
+        self.assertFalse(g.hits((-30, 0), 2))              # позади игрока
+        for _ in range(30):                                # курсор ушёл вверх — луч поворачивается за ним
+            g.update(1 / 60, (0, 0), (0, -1))
+        self.assertLess(g.direction[1], -0.3)
+        for _ in range(240):
+            g.update(1 / 60, (0, 0), (0, -1))
+            if not g.active:
+                break
+        self.assertFalse(g.active)
+
+    def test_ticks_and_recoil(self):
+        from game.systems.geyser import Geyser
+        g = Geyser.scream()
+        g.start((0, 0), (1, 0))
+        ticks = sum(g.update(1 / 60, (0, 0), (1, 0)) for _ in range(60))
+        self.assertTrue(9 <= ticks <= 11)                  # урон раз в 0.1 с
+        rx, ry = g.recoil_vector()
+        self.assertLess(rx, 0)                             # отдача — против направления луча
+        self.assertEqual(Geyser.balancer().recoil_vector(), (0.0, 0.0))
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class HeavenBossTests(unittest.TestCase):
+    FakeRoom = MiniBossBehaviorTests.FakeRoom
+
+    def setUp(self):
+        import pygame
+        random.seed(11)
+        self.V = pygame.Vector2
+        self.room = self.FakeRoom()
+        self.room.zone = ZONES["heaven"]
+        self.room.request_spawn = lambda kind, n: self.room.spawn_requests.append((kind, n))
+        self.player = SimpleNamespace(pos=self.V(380, 200))
+        self.shots, self.t = [], 0.0
+
+    def shoot(self, pos, direction, speed, dmg, radius=3, color=(0, 0, 0), kind="shot"):
+        self.shots.append((self.t, dmg, self.V(pos), self.V(direction) * speed))
+
+    def simulate(self, boss, seconds, dt=1 / 60):
+        self.t = 0.0
+        self.room.enemies = [boss]
+        while self.t < seconds:
+            boss.update(dt, self.room, self.player, self.shoot)
+            for h in self.room.hazards:
+                h.update(dt)
+            self.t += dt
+
+    def test_gate_keeper_heals_only_when_player_is_far(self):
+        from game.entities.miniboss import create_miniboss, LEASH
+        boss = create_miniboss("gate_keeper", self.V(240, 90))
+        boss.spawn_t = 0
+        boss.hp = boss.max_hp * 0.6
+        self.player.pos = boss.pos + self.V(LEASH * 0.5, 0)       # рядом — не лечится
+        before = boss.hp
+        self.simulate(boss, 3)
+        self.assertLessEqual(boss.hp, before)
+        self.player.pos = self.V(440, 215)                        # далеко — лечится
+        boss.pos = self.V(40, 50)
+        boss.state, boss.timer = "walk", 99
+        low = boss.hp
+        self.simulate(boss, 4)
+        self.assertGreater(boss.hp, low)
+        self.assertTrue(any("восстанавливает" in n[0] for n in self.room.notices))
+
+    def test_gate_keeper_summons_zone_enemies_and_uses_scales(self):
+        from game.entities.miniboss import create_miniboss
+        boss = create_miniboss("gate_keeper", self.V(240, 90))
+        boss.spawn_t = 0
+        self.player.pos = boss.pos + self.V(60, 0)
+        self.simulate(boss, 30)
+        kinds = {k for k, _ in self.room.spawn_requests}
+        self.assertTrue(kinds)
+        self.assertTrue(kinds <= {k for k, _ in ZONES["heaven"]["enemy_pool"]})
+        self.assertTrue(any(h.kind == "blast" for h in self.room.hazards) or self.room.hazards == [])
+
+    def test_god_has_ten_thousand_hp_and_hits_for_250(self):
+        from game.entities.boss import create_boss
+        god = create_boss("god", self.V(240, 90))
+        self.assertEqual(god.max_hp, 10000)
+        self.assertTrue(god.is_boss)
+        self.assertEqual(god.contact, 250)
+        god.spawn_t = 0
+        self.simulate(god, 25)
+        self.assertGreater(len(self.shots), 20)
+        self.assertTrue(all(s[1] == 250 for s in self.shots))
+        god.take_damage(100, self.V(1, 0), 500)
+        self.assertEqual(god.knock.length(), 0)                    # Бога не отбросить
+        self.assertEqual(god.hp, 9900)
+
+    def test_god_phases_at_66_and_33_percent(self):
+        from game.entities.boss import create_boss
+        god = create_boss("god", self.V(240, 90))
+        god.spawn_t = 0
+        self.assertEqual(god._phase_for_hp(), 1)
+        god.hp = 6500
+        self.assertEqual(god._phase_for_hp(), 2)
+        god.hp = 3200
+        self.assertEqual(god._phase_for_hp(), 3)
+        self.simulate(god, 40)
+        self.assertEqual(god.phase, 3)
+        self.assertTrue(any(h.damage == 250 for h in self.room.hazards) or self.shots)
+
+    def test_god_uses_every_attack_eventually(self):
+        from game.entities.boss import create_boss
+        from game.entities.god import PHASE_ATTACKS
+        god = create_boss("god", self.V(240, 90))
+        god.spawn_t, god.hp = 0, 3000
+        seen = set()
+        self.t = 0.0
+        self.room.enemies = [god]
+        for _ in range(60 * 240):
+            god.update(1 / 60, self.room, self.player, self.shoot)
+            if god.state.startswith("wind_"):
+                seen.add(god.state)
+            for h in self.room.hazards:
+                h.update(1 / 60)
+            self.room.hazards = [h for h in self.room.hazards if not h.dead]
+            self.t += 1 / 60
+        state_of = {"gap_ring": "wind_gap"}
+        self.assertEqual(seen, {state_of.get(a, "wind_" + a) for a in PHASE_ATTACKS[3]})
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class ShineFormTests(unittest.TestCase):
+    def setUp(self):
+        self.db = ItemDatabase.from_file()
+
+    def test_player_becomes_shine_with_1000_hp_and_100_damage(self):
+        from game.entities.player import Player
+        p = Player(self.db)
+        self.assertEqual((p.max_hp, p.stats["damage"]), (6, 3.0))
+        p.set_form("shine")
+        self.assertEqual((p.max_hp, p.hp, p.stats["damage"]), (1000, 1000, 100.0))
+        p.iframes = 0
+        self.assertTrue(p.hurt(250))                               # удар Бога
+        self.assertEqual(p.hp, 750)
+        p.set_form(None)
+        self.assertEqual((p.max_hp, p.stats["damage"]), (6, 3.0))
+
+    def test_soul_player_has_half_heart_and_double_speed(self):
+        from game.entities.player import Player
+        from game.systems.characters import load_characters
+        chars = load_characters(self.db)
+        p = Player(self.db, chars["soul"])
+        p.inv.add(self.db.items["balancer"])
+        p.recompute()
+        self.assertEqual((p.max_hp, p.hp), (1, 1))
+        self.assertEqual(p.stats["speed"], BASE_STATS["speed"] * 2)
+        self.assertEqual(p.stats["damage"], 7.0)
+        self.assertIn("balancer", p.flags)
+        p.iframes = 0
+        self.assertTrue(p.hurt(1))
+        self.assertLessEqual(p.hp, 0)                              # любой удар смертелен
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class DormantEnemiesTests(unittest.TestCase):
+    def test_dormant_enemy_does_nothing_until_touched(self):
+        import pygame
+        from game.entities.enemy import Enemy, load_enemy_defs
+        data = load_enemy_defs()
+        for kind in ("cherub", "cloudling", "halo_ring", "dove", "trumpeter", "stone_angel"):
+            self.assertIn(kind, data)
+            e = Enemy(kind, pygame.Vector2(200, 100), data[kind])
+            e.spawn_t = 0
+            start = e.pos.copy()
+            for _ in range(120):
+                e.idle(1 / 60)
+            self.assertEqual(e.pos, start)
+            self.assertFalse(e.provoked)
+            e.take_damage(1, pygame.Vector2(1, 0), 0)
+            self.assertTrue(e.provoked)
+
+    def test_sky_combat_room_is_dormant_until_aggro(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.entities.enemy import load_enemy_defs
+        from game.world.room import Room
+        db = ItemDatabase.from_file()
+        data = SimpleNamespace(items=db, enemies=load_enemy_defs(), events=load_events())
+        d = Dungeon(5, 8, db.regular_ids(), mini_kind="miniboss")
+        pos = next(q for q, sp in d.specs.items() if sp.kind == "combat")
+        room = Room(d.specs[pos], ZONES["heaven"], 5, data, [], "heaven:")
+        self.assertTrue(room.passive)
+        room.enter(1.0)
+        self.assertTrue(room.dormant)
+        room.aggro = True
+        self.assertFalse(room.dormant)
+        forest = Room(d.specs[pos], ZONES["forest"], 5, data, [], "forest:")
+        forest.enter(1.0)
+        self.assertFalse(forest.dormant)                           # в других зонах враги нападают сразу
+
+    def test_sky_background_builds_with_gold_doors(self):
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        from game.entities.enemy import load_enemy_defs
+        from game.world.room import Room
+        db = ItemDatabase.from_file()
+        data = SimpleNamespace(items=db, enemies=load_enemy_defs(), events=load_events())
+        d = Dungeon(6, 8, db.regular_ids(), mini_kind="miniboss")
+        room = Room(d.specs[(0, 0)], ZONES["heaven"], 6, data, [], "heaven:")
+        self.assertIsNotNone(room._build_bg())
 
 
 if __name__ == "__main__":

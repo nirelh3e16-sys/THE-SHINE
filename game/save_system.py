@@ -16,7 +16,7 @@ DEFAULT_SAVE = {
     "seen_items": [],
     "testimonies": [],
     "legacy_sins": {s: 0 for s in SINS},
-    "settings": {"volume": 0.6, "screen_shake": True, "fill": "blur", "show_fps": False},
+    "settings": {"volume": 0.6, "screen_shake": True, "fill": "blur", "show_fps": False, "graphics": {}},
     "endings": [],
     "boss_kills": {},
     "current_run": None,

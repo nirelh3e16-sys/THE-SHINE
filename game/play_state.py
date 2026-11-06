@@ -6,10 +6,15 @@ import pygame
 
 from .collision import circles_overlap, circle_rect_overlap
 from .entities.player import Player
+from .entities.miniboss import MINIBOSSES
 from .entities.projectile import Projectile
 from .systems import combat
 from .systems import characters as char_logic
+from .daycycle import effective_state
+from .graphics_settings import NIGHT_MULT
 from .systems.anchor import Anchor, FULL_CHARGE
+from .systems.geyser import Geyser, Charge
+from .systems.needles import Needles
 from .systems.statsview import build_stat_rows
 from .systems.events import apply_effects, can_choose
 from .systems.morality import Morality, TESTIMONIES
@@ -19,7 +24,7 @@ from .ui.menus import Menu, draw_journal
 from .ui.text import draw_text
 from .world.dungeon import Dungeon, OPP
 from .world.room import Room, Prop, Pickup, CENTER
-from .world.zones import ZONES, ZONE_ORDER, zone_room_count
+from .world.zones import ZONES, ZONE_ORDER, SIDE_ZONES, zone_room_count
 from .ui.text import draw_text as _draw_text
 from .settings import GAME_W, GAME_H, ROOM_X, ROOM_Y, ROOM_W, ROOM_H
 
@@ -59,6 +64,12 @@ class PlayState:
         self.rooms_cleared = 0
         self.slow_t = self.freeze_t = 0.0
         self.soldier_t, self.clock_t = 1.4, 14.0
+        self.thorn_t = 1.0         # Колючка-пушка: время до следующего выстрела
+        self.needle_hint = False   # подсказка про иголки Живой ели показана
+        self.balancer = Geyser.balancer()      # Душа: Балансатор (гейзер душ после зарядки)
+        self.balancer_charge = Charge()
+        self.scream = Geyser.scream()          # Душа: Крик (активный предмет, гигантский гейзер)
+        self.sky_hint = False      # подсказка про «спящих» небесных стражей показана
         self.burger_t, self.feather_t = random.uniform(15, 25), random.uniform(30, 50)
         if not snapshot:  # стартовые предметы персонажа (при продолжении они уже есть в сохранении)
             for item_id in self.char["start_items"]:
@@ -72,6 +83,7 @@ class PlayState:
         self.secret_ready = False
         self.cheated = False       # тест-меню использовалось: результаты забега не сохраняются
         self.debug = None
+        self.day_clock = float(snapshot.get("day", 0.0)) if snapshot else 0.0   # визуальное время суток: забег начинается на рассвете
         self.pending_cutscene = False   # Ад: сцена с Бесом начнётся, когда игрок дойдёт до центра комнаты
         self.chain_end = None
         self.grenades, self.blasts = [], []
@@ -100,10 +112,11 @@ class PlayState:
         self.main_zone = self.zone
         self.zone_seed = f"{self.seed}:{self.zone['id']}"
         self.zone_pool = list(pool) if pool is not None else sorted(
-            i for i in self.db.items if i not in self.player.inv.items)
+            i for i, d in self.db.items.items() if i not in self.player.inv.items and not d.drop_only)
         n = zone_room_count(self.zone["id"], self.cfg)
         self.dungeon = Dungeon(self.zone_seed, n, self.zone_pool, extra_kinds=self.zone.get("extra_kinds", ()),
-                               arena=bool(self.zone.get("arena")))
+                               arena=bool(self.zone.get("arena")),
+                               mini_kind="miniboss" if self.zone.get("miniboss") else None)
         self.rooms = {}
         self.taken = set()
         self.boss_dead = False
@@ -125,12 +138,18 @@ class PlayState:
 
     def ui_glitch(self):
         """Фаза 3 Хаоса: часть интерфейса пропадает, звук и картинка дают сбой."""
-        boss = self.boss()
+        boss = self.boss() or self.miniboss()
         return bool(boss is not None and getattr(boss, "ui_glitch", False))
 
     def boss(self):
         for e in self.room.enemies:
             if getattr(e, "is_boss", False) and not e.dead:
+                return e
+        return None
+
+    def miniboss(self):
+        for e in self.room.enemies:
+            if getattr(e, "is_miniboss", False) and not e.dead:
                 return e
         return None
 
@@ -162,7 +181,7 @@ class PlayState:
 
     def give_random_item(self):
         pool = [i for i in self.zone_pool if i not in self.player.inv.items] or \
-               [i for i in self.db.items if i not in self.player.inv.items]
+               [i for i in self.db.regular_ids() if i not in self.player.inv.items]
         if not pool:
             self.add_coins(5)
             self.notes.push("Предметов больше нет. Только монеты.", "gold")
@@ -228,6 +247,12 @@ class PlayState:
             self.sfx("pickup")
             inv.start_kill_recharge(item.active["kills"])
             self.notes.push(f"Аптечка: здоровье восстановлено. Перезарядка — {item.active['kills']} убийств.", "green", 3)
+        elif kind == "scream":   # Душа: гигантский гейзер душ с отдачей
+            self.scream.start((p.pos.x, p.pos.y), (p.aim.x, p.aim.y))
+            fx.flash((255, 255, 255), 0.3)
+            fx.shake(6, 0.4)
+            self.sfx("nuke")
+            inv.start_cooldown(item.active["cooldown"])
         elif kind == "phone":
             if not self._teleport_random():
                 self.notes.push("Телефон не ловит сеть: некуда телепортироваться.", "grey")
@@ -318,6 +343,80 @@ class PlayState:
                     fx.shake(2, 0.15)
                     self.sfx("hit")
 
+    # --- Душа: Балансатор и Крик ---
+    def _update_balancer(self, dt, mouse_down):
+        """Зажми атаку на 3 секунды и отпусти: гейзер душ, который следит за курсором. Недозаряд пропадает."""
+        p, charge, geyser = self.player, self.balancer_charge, self.balancer
+        if geyser.active:
+            charge.cancel()
+            return
+        if mouse_down and p.dodge_t <= 0:
+            charge.hold(dt)
+        elif charge.value > 0 and charge.release():
+            geyser.start((p.pos.x, p.pos.y), (p.aim.x, p.aim.y))
+            self.game.effects.shake(2, 0.2)
+            self.sfx("nuke")
+
+    def _update_geysers(self, dt):
+        """Двигает гейзеры, наносит урон каждые 0.1 с всем, кто в луче, и отталкивает игрока (отдача Крика)."""
+        p, room, fx = self.player, self.room, self.game.effects
+        origin, aim = (p.pos.x, p.pos.y), (p.aim.x, p.aim.y)
+        for g in (self.balancer, self.scream):
+            was_active = g.active
+            ticks = g.update(dt, origin, aim)
+            if not was_active:
+                continue
+            if ticks:
+                # у Шайна (финал Бога) урон 100, поэтому гейзер душ в его теле слабее, чтобы бой не кончался за секунды
+                dmg = p.stats["damage"] * g.damage_mult * (0.06 if p.form else 1.0) * ticks
+                for e in room.enemies:
+                    if e.harmful and g.hits((e.pos.x, e.pos.y), e.radius) and e.take_damage(dmg, pygame.Vector2(g.direction), 30):
+                        fx.burst(e.pos, (215, 232, 255), 2, 60, 0.25)
+                if g is self.scream:   # Крик сметает вражеские снаряды
+                    for pr in self.eshots:
+                        if g.hits((pr.pos.x, pr.pos.y), pr.radius):
+                            pr.dead = True
+            if g.recoil:
+                p.knock = pygame.Vector2(g.recoil_vector())
+                fx.shake(2, 0.05)
+
+    def _draw_geyser(self, surf, off, g):
+        if not g.active:
+            return
+        ox, oy = g.origin
+        ex, ey = g.end()
+        a, b = (ox + off.x, oy + off.y), (ex + off.x, ey + off.y)
+        fade = min(1.0, g.left / 0.25)
+        w = max(2, int(g.width * fade))
+        pygame.draw.line(surf, (150, 185, 255), a, b, w + 6)
+        pygame.draw.line(surf, (222, 236, 255), a, b, w)
+        pygame.draw.line(surf, (255, 255, 255), a, b, max(2, int(w * 0.45)))
+        t = pygame.time.get_ticks() / 1000
+        d = pygame.Vector2(g.direction)
+        n = pygame.Vector2(-d.y, d.x)
+        for i in range(18):   # души, текущие вдоль луча
+            dist = ((t * 190 + i * g.reach / 18) % g.reach)
+            sway = math.sin(t * 7 + i * 1.9) * g.width * 0.35
+            c = pygame.Vector2(a) + d * dist + n * sway
+            pygame.draw.circle(surf, (255, 255, 255), (int(c.x), int(c.y)), 3 if g.width > 20 else 2)
+            pygame.draw.circle(surf, (20, 20, 40), (int(c.x) - 1, int(c.y)), 1)
+
+    def _draw_balancer_charge(self, surf, off):
+        """Кольцо зарядки вокруг Души; когда заряд полный — виден прицельный луч до конца дальности."""
+        p, charge = self.player, self.balancer_charge
+        if charge.value <= 0 or self.balancer.active:
+            return
+        c = (int(p.pos.x + off.x), int(p.pos.y + off.y))
+        rect = pygame.Rect(c[0] - 13, c[1] - 13, 26, 26)
+        pygame.draw.circle(surf, (60, 70, 110), c, 13, 1)
+        if charge.ready:
+            blink = (pygame.time.get_ticks() // 100) % 2
+            pygame.draw.circle(surf, (255, 255, 255) if blink else (190, 215, 255), c, 15, 2)
+            end = p.pos + p.aim * self.balancer.reach
+            pygame.draw.line(surf, (190, 215, 255), c, (end.x + off.x, end.y + off.y), 1)
+        else:
+            pygame.draw.arc(surf, (200, 225, 255), rect, math.pi / 2, math.pi / 2 + math.tau * charge.fraction, 3)
+
     # --- компактный бес ---
     def _update_imp(self, dt):
         p, room, fx = self.player, self.room, self.game.effects
@@ -376,9 +475,9 @@ class PlayState:
         p = self.player
         dungeon, rooms = self._outer()
         return {
-            "seed": self.seed, "char": self.char["id"], "zone": self.zone_index, "zone_pool": list(self.zone_pool),
+            "seed": self.seed, "char": self.char["id"], "zone": self.zone_index, "day": round(self.day_clock, 1), "zone_pool": list(self.zone_pool),
             "pos": list(dungeon.pos), "visited": [list(v) for v in dungeon.visited],
-            "cleared": [list(pos) for pos, r in rooms.items() if r.cleared and r.kind in ("combat", "boss")],
+            "cleared": [list(pos) for pos, r in rooms.items() if r.cleared and r.kind in ("combat", "boss", "miniboss")],
             "taken": sorted(self.taken), "hp": p.hp, "coins": p.coins, "items": list(p.inv.items),
             "run_mods": [list(m) for m in p.run_mods], "sins": self.morality.run_sins,
             "testimonies": self.morality.run_testimonies, "boss_dead": self.boss_dead,
@@ -386,7 +485,7 @@ class PlayState:
         }
 
     def save_snapshot(self):
-        if self.cheated:
+        if self.cheated or self.player.form:   # во время финала с Шайном забег не сохраняется
             return
         self.game.save.data["current_run"] = self.snapshot()
         self.game.save.write()
@@ -414,6 +513,8 @@ class PlayState:
             room.cleared, room.locked, room.spawned = True, False, True
             if room.kind == "boss" and self.boss_dead:
                 self._boss_rewards(room, silent=True)
+            elif room.kind == "miniboss":
+                self._miniboss_reward(room)
 
     def finish_run(self, won):
         data = self.game.save.data
@@ -490,6 +591,7 @@ class PlayState:
         self.paused = True
         self.pause_menu = Menu("ПАУЗА", [
             ("Продолжить", lambda: setattr(self, "paused", False)),
+            ("Графика", lambda: self.game.go_graphics(back_state=self)),
             ("Сохранить и в меню", self._save_quit),
             ("В меню без сохранения", self.game.go_menu),
         ])
@@ -556,18 +658,24 @@ class PlayState:
             self._finish_ending()
         elif prop.kind == "rift":
             self.advance_zone()   # прыжок в разлом — новая локация Ад
+        elif prop.kind == "sky_portal":
+            self.advance_zone("heaven")   # забег не заканчивается: портал ведёт на Небеса
         elif prop.kind == "portal":
-            if self.zone_index + 1 < len(ZONE_ORDER):
+            if self.zone.get("ends_run"):   # портал после Беса: злая концовка (она открывает Небеса)
+                self.finish_run(True)
+                self.game.go_ending(self, self.zone["ends_run"])
+            elif self.zone_index + 1 < len(ZONE_ORDER) and ZONE_ORDER[self.zone_index + 1] not in SIDE_ZONES:
                 self.advance_zone()
             else:
                 self.finish_run(True)
                 self.game.go_victory(self)
 
     # --- зоны и дома ---
-    def advance_zone(self):
+    def advance_zone(self, zone_id=None):
+        """Переход в следующую зону (или в указанную: Ад — из разлома, Небеса — из небесного портала)."""
         self.eshots.clear()
         self.pshots.clear()
-        self._setup_zone(self.zone_index + 1)
+        self._setup_zone(ZONE_ORDER.index(zone_id) if zone_id else self.zone_index + 1)
         self.player.heal(2)
         self.room = self.get_room(self.dungeon.pos)
         self.player.pos = pygame.Vector2(CENTER)
@@ -679,6 +787,38 @@ class PlayState:
         ("БЕС", "Ну что ж. Покажи мне, на что способен убийца моего сына.", None),
     )
 
+    GOD_SCENE = (
+        ("—", "Небо замирает. Вокруг единственного глаза раскрываются бесчисленные крылья.", "appear"),
+        ("БОГ", "Сын мой, зачем ты вторгаешься в святые земли, разжигая в них пламя хаоса и нечестия?", None),
+        ("БОГ", "Я уже молчу о частичном уничтожении баланса: ты разрушил преисподнюю.", None),
+        ("БОГ", "Кажется, ты сотворил не только семь смертных грехов, но и породил восьмой — совокупность всего зла мира. «Чистое зло».", None),
+        ("БОГ", "Такому, как ты, нет места ни на земле, ни в аду, ни в раю.", None),
+        ("БОГ", "Я изгоняю тебя из этой вселенной. Прощай, сын мой.", "smite"),
+        ("—", "Что-то внутри тебя шевельнулось. Раненый Шайн, зарядившись силой твоей души, приходит в себя...", "possess"),
+        ("—", "Он разрывает твоё тело и поднимается на его месте. Теперь ты — Шайн. 1000 здоровья, 100 урона.", "transform"),
+    )
+
+    def _start_boss_cutscene(self):
+        if self.zone.get("boss_cutscene") == "god":
+            self._start_god_cutscene()
+        else:
+            self._start_imp_cutscene()
+
+    def _start_god_cutscene(self):
+        self.pending_cutscene = False
+        self.cutscene = True
+        self.chain = list(self.GOD_SCENE)
+        self.chain_end = self._start_god_fight
+        self.player.pos = pygame.Vector2(CENTER.x, CENTER.y + 56)
+        self.game.audio.music.stop()
+        self._next_chain()
+
+    def _start_god_fight(self):
+        boss = self.boss()
+        if boss is not None:
+            boss.spawn_t = 1.0   # короткая пауза перед началом боя
+        self.hud_layout = 0
+
     def _enter_room(self):
         """Вход в комнату. Босс Ада появляется не сразу: сначала игрок должен дойти до центра."""
         room = self.room
@@ -688,6 +828,13 @@ class PlayState:
             return
         self.pending_cutscene = False
         room.enter(self.hp_scale())
+        if room.passive and room.spawned and not room.aggro and not self.sky_hint:
+            self.sky_hint = True
+            self.notes.push("Небесная стража спит. Тронь одного — и проснутся все. Дверь откроется, только когда бой кончится.", "grey", 5)
+        mini = self.miniboss()
+        if room.kind == "miniboss" and mini is not None:
+            self.sfx("boss")
+            self.notes.push(mini.name.upper(), "red", 3)
 
     def _start_imp_cutscene(self):
         self.pending_cutscene = False
@@ -730,6 +877,29 @@ class PlayState:
             fx.shake(5, 0.8)
             fx.flash((255, 190, 80), 0.5)
             self.sfx("boss")
+        elif fx_name == "appear":     # Небеса: Бог раскрывает крылья
+            self.room.enter(self.hp_scale())
+            boss = self.boss()
+            if boss is not None:
+                boss.spawn_t = boss.SPAWN_TIME
+            fx.flash((255, 255, 255), 0.9)
+            fx.shake(5, 0.9)
+            self.sfx("boss")
+        elif fx_name == "smite":      # приговор
+            fx.flash((255, 255, 255), 0.9)
+            fx.shake(7, 1.0)
+            self.sfx("death")
+        elif fx_name == "possess":    # раненый Шайн вселяется в игрока
+            fx.flash((70, 0, 110), 0.8)
+            fx.burst(self.player.pos, (190, 90, 235), 36, 120, 0.9, 2)
+            fx.shake(4, 0.8)
+            self.sfx("story")
+        elif fx_name == "transform":  # игрок разорван, дальше играем за Шайна
+            self.player.set_form("shine")
+            fx.flash((255, 255, 255), 1.0)
+            fx.burst(self.player.pos, (255, 230, 140), 48, 170, 1.0, 3)
+            fx.shake(9, 1.0)
+            self.sfx("boss")
         elif fx_name == "shatter":
             fx.flash((255, 255, 255), 0.9)
             fx.shake(7, 1.0)
@@ -748,14 +918,29 @@ class PlayState:
             boss.opening_comment(self.room, self.player.inv.items)
         self.save_snapshot()
 
+    def heaven_open(self):
+        """Небеса открыты, если игрок видел злую концовку (победа над Бесом)."""
+        return "evil" in self.game.save.data.get("endings", [])
+
     def _finish_ending(self):
-        kind = "secret" if self.secret_ready else "good"
+        kind = "true" if self.zone.get("final_boss") else ("secret" if self.secret_ready else "good")
         if kind == "secret":
             self.morality.add_testimony("shine_was_human")
         self.finish_run(True)
         self.game.go_ending(self, kind)
 
+    def landlord_house_key(self):
+        """Ключ дома, в котором живёт Домовладелец (один из домов Пригорода, выбирается по сиду)."""
+        if not self.zone.get("house_miniboss") or self.stack:
+            return None
+        houses = sorted(pos for pos, spec in self.dungeon.specs.items() if spec.kind == "house")
+        if not houses:
+            return None
+        chosen = random.Random(f"{self.zone_seed}:landlord").choice(houses)
+        return f"{self.ns}{chosen}:house"
+
     def enter_house(self, prop):
+        mini_kind = "miniboss" if prop.key == self.landlord_house_key() else None
         rng = random.Random(f"{self.ctx_seed}:{prop.key}")
         assigned = {i for ids in self.dungeon.item_for_room.values() for i in ids}
         pool = [i for i in self.zone_pool if i not in self.player.inv.items and i not in assigned]
@@ -764,7 +949,7 @@ class PlayState:
         self.zone = ZONES["house"]
         self.ctx_seed = f"{self.ctx_seed}:{prop.key}"
         self.ns = f"{prop.key}:"
-        self.dungeon = Dungeon(self.ctx_seed, rng.randint(3, 4), pool, house=True)
+        self.dungeon = Dungeon(self.ctx_seed, rng.randint(3, 4), pool, house=True, mini_kind=mini_kind)
         self.rooms = {}
         self._swap_room(self.dungeon.pos)
         self.sfx("door")
@@ -819,6 +1004,7 @@ class PlayState:
             ("Полное лечение", None, lambda: self._dbg_touch(lambda: setattr(p, "hp", p.max_hp))),
             ("Дать карточку (выбор из трёх)", None, lambda: self._dbg_touch(self._dbg_card)),
             ("Телепорт в комнату босса", None, self.debug_goto_boss),
+            ("Телепорт к мини-боссу", None, self.debug_goto_miniboss),
         ]
         for i, zid in enumerate(ZONE_ORDER):
             suffix = " (сразу бой)" if ZONES[zid].get("arena") else ""
@@ -878,6 +1064,31 @@ class PlayState:
         self.dungeon.pos = pos
         self._swap_room(pos)
         self.debug = None
+
+    def debug_goto_miniboss(self):
+        """Тест-меню: комната мини-босса текущей локации (в Пригороде — дом Домовладельца)."""
+        self.cheated = True
+        self.debug = None
+        while self.stack:
+            self.leave_house()
+        pos = next((q for q, sp in sorted(self.dungeon.specs.items()) if sp.kind == "miniboss"), None)
+        if pos is None and self.zone.get("house_miniboss"):
+            key = self.landlord_house_key()
+            house = next((q for q, sp in sorted(self.dungeon.specs.items()) if key == f"{self.ns}{q}:house"), None)
+            if house is not None:
+                self.dungeon.visited.add(house)
+                self.dungeon.pos = house
+                self._swap_room(house)
+                prop = next((pr for pr in self.room.props if pr.kind == "house"), None)
+                if prop is not None:
+                    self.enter_house(prop)
+                    pos = next((q for q, sp in sorted(self.dungeon.specs.items()) if sp.kind == "miniboss"), None)
+        if pos is None:
+            self.notes.push("В этой локации нет мини-босса.", "grey", 3)
+            return
+        self.dungeon.visited.add(pos)
+        self.dungeon.pos = pos
+        self._swap_room(pos)
 
     def _debug_event(self, event):
         if event.type != pygame.KEYDOWN:
@@ -948,6 +1159,8 @@ class PlayState:
 
     def _desired_track(self):
         kind = self.room.kind
+        if kind == "miniboss":   # на любом мини-боссе играет mini-bosses.mp3
+            return "calm" if self.room.cleared else "miniboss"
         if kind == "boss":
             if self.pending_cutscene:
                 return "calm"
@@ -955,6 +1168,7 @@ class PlayState:
         return self.zone.get("music_combat", "combat") if kind == "combat" else "calm"
 
     def _update_play(self, dt):
+        self.day_clock += dt
         g, p, room, fx = self.game, self.player, self.room, self.game.effects
         keys = pygame.key.get_pressed()
         move = pygame.Vector2(keys[pygame.K_d] - keys[pygame.K_a], keys[pygame.K_s] - keys[pygame.K_w])
@@ -967,11 +1181,18 @@ class PlayState:
             p.aim = aim.normalize()
         room.update_dynamic(dt, p.pos)
         p.update(dt, move, room, None if p.gravity_immune else room.drift())
-        if self.pending_cutscene and p.pos.distance_to(CENTER) < 28:   # Ад: игрок дошёл до центра комнаты босса
-            self._start_imp_cutscene()
+        if p.needles.update(dt, p.pos.x, p.pos.y) and p.hurt(p.needles.stab_damage()):   # иголки колют при каждом движении
+            self._on_player_hurt()
+        if self.pending_cutscene and (self.zone.get("boss_cutscene") == "god" or p.pos.distance_to(CENTER) < 28):
+            self._start_boss_cutscene()   # Ад: игрок дошёл до центра комнаты; Небеса: Бог говорит сразу
             return
         mouse_down = pygame.mouse.get_pressed()[0]
-        if "anchor" in p.flags:   # якорь заменяет обычную стрельбу
+        if "balancer" not in p.flags:
+            self.balancer_charge.cancel()
+        if "balancer" in p.flags:   # Балансатор заменяет обычную стрельбу
+            self.anchor.cancel_orbit()
+            self._update_balancer(dt, mouse_down)
+        elif "anchor" in p.flags:   # якорь заменяет обычную стрельбу
             self._update_anchor(dt, mouse_down)
         else:
             self.anchor.cancel_orbit()
@@ -980,7 +1201,9 @@ class PlayState:
                     self.pshots.extend(combat.build_player_shots(p, p.aim))
                     self.sfx("shoot")
                 p.shoot_cd = p.stats["fire_delay"]
+        self._update_geysers(dt)
         self._item_effects(dt)
+        self._update_thorns(dt)
         self._update_imp(dt)
         self._update_grenades(dt)
         # враги и снаряды
@@ -988,14 +1211,25 @@ class PlayState:
         edt = dt * scale
         room.player_shots = self.pshots
         drift = room.drift()
+        dormant = room.dormant
         for e in room.enemies:
+            if dormant:   # Небеса: стражи стоят смирно, пока кого-нибудь не тронут
+                e.idle(edt)
+                continue
             if drift.length_squared() and e.spawn_t <= 0 and not getattr(e, "is_boss", False):
                 e.pos += drift * edt
             e.update(edt, room, p, self.enemy_shoot)
+        if dormant and any(e.provoked for e in room.enemies):
+            room.aggro = True   # тронули одного — бой начинают все
+            self.notes.push("Небесная стража проснулась!", "red", 3)
+            self.sfx("boss")
         room.process_spawns(self.hp_scale())
         for pr in self.eshots:
             pr.update(edt, room)
+        targets = [e for e in room.enemies if e.harmful] if "homing" in p.flags else []
         for pr in self.pshots:
+            if pr.homing:
+                combat.steer_homing(pr, targets, dt)
             pr.update(dt, room)
         if room.shake_request:
             fx.shake(*room.shake_request)
@@ -1060,6 +1294,13 @@ class PlayState:
                 target = min(alive, key=lambda e: e.pos.distance_to(origin))
                 self.pshots.extend(combat.soldier_shot(p, origin, target.pos))
                 self.soldier_t = 1.4
+        if "thorn_cannon" in f:
+            self.thorn_t -= dt
+            if self.thorn_t <= 0 and alive and len(self.pshots) < self.cfg["max_player_projectiles"]:
+                origin = p.pos + pygame.Vector2(12, -10)
+                target = min(alive, key=lambda e: e.pos.distance_to(origin))
+                self.pshots.extend(combat.thorn_shot(p, origin, target.pos))
+                self.thorn_t = 1.1
         if "slow_clock" in f:
             self.clock_t -= dt
             if self.clock_t <= 0:
@@ -1079,9 +1320,9 @@ class PlayState:
                 self.notes.push(random.choice(FEATHER_LINES), "gold", 3)
                 self.feather_t = random.uniform(40, 70)
 
-    def enemy_shoot(self, pos, direction, speed, dmg, radius=3, color=(255, 110, 60)):
+    def enemy_shoot(self, pos, direction, speed, dmg, radius=3, color=(255, 110, 60), kind="shot"):
         if len(self.eshots) < self.cfg["max_enemy_projectiles"]:
-            self.eshots.append(Projectile(pos, direction * speed, dmg, 3.0, radius, False, color))
+            self.eshots.append(Projectile(pos, direction * speed, dmg, 3.0, radius, False, color, kind=kind))
 
     def _boss_comment(self, key):
         boss = self.boss()
@@ -1110,6 +1351,10 @@ class PlayState:
                     if e.take_damage(pr.damage, pr.vel, pr.knockback):
                         fx.burst(pr.pos, (255, 255, 200), 4, 70, 0.25)
                         self.sfx("hit")
+                        if pr.kind == "thorn":   # колючка застревает во враге и ранит его при каждом его движении
+                            if getattr(e, "_thorns", None) is None:
+                                e._thorns = Needles()
+                            e._thorns.add()
                     if pr.poison:
                         e.poison_t = 3.0
                     if pr.explode:
@@ -1119,15 +1364,49 @@ class PlayState:
         for pr in self.eshots:
             if circles_overlap(pr.pos, pr.radius, p.pos, p.RADIUS):
                 pr.dead = True
+                if pr.kind == "needle":   # иголка Живой ели: не ранит сама, а застревает в игроке
+                    self._stick_needle()
+                    continue
                 if p.hurt(pr.damage, pr.pos):
                     self._on_player_hurt()
         for e in room.enemies:
-            if e.harmful and circles_overlap(e.pos, e.radius, p.pos, p.RADIUS) and p.hurt(e.contact, e.pos):
+            if not (e.harmful and circles_overlap(e.pos, e.radius, p.pos, p.RADIUS)):
+                continue
+            if room.dormant:   # спящего можно только задеть: он не ранит, но просыпается вся стража
+                e.provoked = True
+                continue
+            if p.hurt(e.contact, e.pos):
                 self._on_player_hurt()
+        for pr in self.pshots:   # Шипастая ярость: колючка взрывается, когда исчезает
+            if pr.dead and pr.expire_explode and not pr.exploded:
+                pr.exploded = True
+                self._explode(pr)
         dead = [e for e in room.enemies if e.dead]
         for e in dead:
             self._enemy_died(e)
         room.enemies = [e for e in room.enemies if not e.dead]
+
+    def _stick_needle(self):
+        p, fx = self.player, self.game.effects
+        if p.invulnerable or p.god:   # во время перекатa иголки пролетают насквозь
+            return
+        p.needles.add()
+        fx.burst(p.pos, (170, 215, 90), 4, 60, 0.2)
+        self.sfx("hit")
+        if not self.needle_hint:
+            self.needle_hint = True
+            self.notes.push("Иголки застряли! Каждый шаг ранит 3 с — замри или перекатись.", "red", 4.5)
+
+    def _update_thorns(self, dt):
+        """Колючки Колючки-пушки ранят врага при каждом его движении."""
+        dmg = max(1.0, self.player.stats["damage"] * 0.4)
+        for e in self.room.enemies:
+            thorns = getattr(e, "_thorns", None)
+            if thorns is None or e.dead:
+                continue
+            if e.spawn_t <= 0 and thorns.update(dt, e.pos.x, e.pos.y):
+                e.take_damage(dmg * thorns.count ** 0.5)
+                self.game.effects.burst(e.pos, (170, 215, 90), 3, 50, 0.2)
 
     def _explode(self, pr):
         fx = self.game.effects
@@ -1146,9 +1425,54 @@ class PlayState:
         luck = max(0.0, self.player.stats["luck"])
         if random.random() < e.coin_chance + luck * 0.03:
             from .world.room import Pickup
-            self.room.pickups.append(Pickup("coin", e.pos, 1))
+            item_id = self._channel_loot_item() if "channel_loot" in self.player.flags else None
+            if item_id:   # Старый пульт + Старый телевизор: вместо монеты выпадает случайный предмет
+                self.room.pickups.append(Pickup("item", e.pos, item_id))
+            else:
+                self.room.pickups.append(Pickup("coin", e.pos, 1))
         if getattr(e, "is_boss", False):
             self.on_boss_dead(e)
+        elif getattr(e, "is_miniboss", False):
+            self.on_miniboss_dead(e)
+
+    def _channel_loot_item(self):
+        """Случайный предмет для «Переключения каналов»: ещё не твой, не лежащий в комнате и не награда мини-босса."""
+        lying = {pk.value for pk in self.room.pickups if pk.kind == "item"}
+        pool = [i for i in self.db.regular_ids() if i not in self.player.inv.items and i not in lying]
+        return random.choice(pool) if pool else None
+
+    def on_miniboss_dead(self, boss):
+        room = self.room
+        self.eshots.clear()
+        room.hazards.clear()
+        room.spawn_requests.clear()
+        self.player.needles.clear()
+        self.game.effects.flash((255, 255, 255), 0.4)
+        self.game.effects.shake(4, 0.4)
+        self.sfx("death")
+        for other in room.enemies:   # собаки и прочая свита исчезают вместе с мини-боссом
+            if other is not boss and not other.dead:
+                self.game.effects.burst(other.pos, (255, 255, 255), 8, 80, 0.4, 2)
+                other.dead = True
+        room.enemies = [e for e in room.enemies if e is boss]
+        self._miniboss_reward(room)
+        self.notes.push(f"{boss.name} повержен. Он что-то обронил.", "gold", 4)
+
+    def _miniboss_reward(self, room):
+        """Предмет-награда мини-босса на пьедестале в центре комнаты (пока не забран)."""
+        cls = MINIBOSSES.get(room.zone.get("miniboss"))
+        if cls is None or cls.drop_item is None:
+            return
+        key = f"{room.ns}{room.spec.pos}:mb"
+        if key in self.taken or any(p.key == key for p in room.props):
+            return
+        if cls.drop_item in self.player.inv.items:   # уже есть (тест-меню): вместо предмета монеты
+            from .world.room import Pickup
+            for _ in range(3):
+                room.pickups.append(Pickup("coin", CENTER, 1))
+            return
+        from .world.room import Prop
+        room.props.append(Prop("pedestal", (CENTER.x, CENTER.y), key, item_id=cls.drop_item))
 
     def _count_boss_kill(self):
         """Считает победу над боссом (для открытия персонажей). Тест-режим не засчитывается."""
@@ -1164,8 +1488,13 @@ class PlayState:
 
     def _boss_rewards(self, room, silent=False):
         from .world.room import Prop
+        if self.zone.get("final_boss"):   # Бог повержен: остаются только врата к истинной концовке
+            room.props.append(Prop("gates", (CENTER.x, CENTER.y), f"{room.ns}{room.spec.pos}:gates"))
+            return
         if self.zone.get("arena"):
             room.props.append(Prop("gates", (CENTER.x, CENTER.y), f"{room.ns}{room.spec.pos}:gates"))
+            if self.heaven_open():   # злая концовка открыта: рядом с вратами появляется портал на Небеса
+                room.props.append(Prop("sky_portal", (CENTER.x + 70, CENTER.y), f"{room.ns}{room.spec.pos}:sky"))
             if self.morality.secret_unlocked():   # секретная концовка открыта: в стене появляется дверь с разломом в Ад
                 room.props.append(Prop("rift", (CENTER.x - 70, CENTER.y), f"{room.ns}{room.spec.pos}:rift"))
             return
@@ -1200,7 +1529,11 @@ class PlayState:
             if self.secret_ready:
                 self.notes.push("Его силуэт дрогнул. В голосе было что-то знакомое...", "gold", 6)
                 self.notes.push("В стене открылась дверь. За ней — разлом, в котором виден ад.", "red", 6)
+            if self.heaven_open():
+                self.notes.push("Рядом с вратами раскрылся белый портал. Куда он ведёт — на небеса?", "gold", 6)
             self.notes.push("Он пал. Врата перед тобой открыты.", "gold", 5)
+        elif self.zone.get("final_boss"):
+            self.notes.push("Бог пал. Всё стихло. Врата перед тобой открыты.", "gold", 6)
         else:
             self.notes.push(f"{self.zone['boss_name'].capitalize()} повержен. Забери награду и войди в портал.", "gold", 5)
 
@@ -1221,6 +1554,9 @@ class PlayState:
                     p.heal(2)
                     pk.dead = True
                     self.sfx("pickup")
+                elif pk.kind == "item":
+                    pk.dead = True
+                    self.give_item(pk.value)
         self.room.pickups = [k for k in self.room.pickups if not k.dead]
 
     def _check_clear(self):
@@ -1282,9 +1618,15 @@ class PlayState:
         for prop in room.props:
             self._draw_prop(surf, off, prop)
         for pk in room.pickups:
+            if pk.kind == "item":   # выпавший предмет (Переключение каналов)
+                icon = sprites.icon(pk.value)
+                bob = int(math.sin(t_sec * 5 + pk.pos.x) * 2)
+                surf.blit(icon, icon.get_rect(center=(int(pk.pos.x + off.x), int(pk.pos.y + off.y) + bob)))
+                continue
             img = sprites.get("coin" if pk.kind == "coin" else "gem_heart")
             surf.blit(img, (pk.pos.x + off.x - 3, pk.pos.y + off.y - 3))
         room.draw_obstacles(surf, off, sprites)
+        self._draw_shadows(surf, off, sprites)
         for e in sorted(room.enemies, key=lambda e: e.pos.y):
             e.draw(surf, off, sprites)
         if "soldier" in self.player.flags:
@@ -1295,6 +1637,7 @@ class PlayState:
             pr.draw(surf, off)
         fx.draw_particles(surf, off)
         room.draw_embers(surf, off, t_sec)
+        self._apply_lighting(surf, off, t_sec)
         surf.blit(self.game.vignette, (0, 0))
         if self.freeze_t > 0 or self.slow_t > 0:
             tint = pygame.Surface((GAME_W, GAME_H), pygame.SRCALPHA)
@@ -1332,6 +1675,79 @@ class PlayState:
         if self.debug is not None:
             self._draw_debug(surf)
 
+    # --- освещение, тени, время суток ---
+    def light_state(self):
+        gfx = self.game.gfx
+        return effective_state(self.zone, self.day_clock, self.cfg.get("day_length_seconds", 480), gfx["time_mode"],
+                               NIGHT_MULT[gfx["night_brightness"]], gfx["lights"])
+
+    def _shadow_actors(self, sprites):
+        """Кто отбрасывает тень: игрок, мобы, боссы, NPC и компаньон. (x, y ног, ширина, высота)."""
+        p = self.player
+        img = sprites.get("player_" + p.char_id)
+        actors = [(p.pos.x, p.pos.y + p.RADIUS + 4, img.get_width() * 0.8, img.get_height())]
+        for e in self.room.enemies:
+            if e.dead or e.spawn_t > 0:
+                continue
+            w, h = sprites.get(e.sprite).get_size()
+            floating = e.kind in ("shine", "imp", "drone", "crow", "eye_swarm", "ember")
+            actors.append((e.pos.x, e.pos.y + h / 2 + (10 if floating else 0), w * 0.8, h * (0.6 if floating else 1.0)))
+        for prop in self.room.props:
+            if prop.kind == "npc":
+                actors.append((prop.pos.x, prop.pos.y + 8, 10, 20))
+        if self.imp is not None:
+            actors.append((self.imp["pos"].x, self.imp["pos"].y + 16, 8, 8))
+        return actors
+
+    def _draw_shadows(self, surf, off, sprites):
+        gfx = self.game.gfx
+        if not (gfx["shaders"] and gfx["shadows"]):
+            return
+        self.game.lighting.draw_shadows(surf, off, self._shadow_actors(sprites), self.light_state(), gfx)
+
+    BOSS_LIGHTS = {"lumberjack": ((255, 170, 80), 68, 0.7), "neighbor_boss": ((255, 220, 120), 72, 0.7),
+                   "mayor": ((255, 240, 200), 84, 0.75), "chaos": ((255, 80, 220), 104, 0.85),
+                   "shine": ((255, 235, 150), 124, 0.95), "imp": ((255, 120, 40), 116, 0.9),
+                   "living_spruce": ((150, 225, 100), 54, 0.6), "landlord": ((200, 225, 255), 46, 0.55),
+                   "tank": ((255, 190, 90), 50, 0.55)}
+    MOB_LIGHTS = {"ember": ((255, 140, 40), 34), "fire_imp": ((255, 120, 40), 30), "magma_golem": ((255, 110, 30), 36),
+                  "hellhound": ((255, 100, 30), 26), "glitch": ((80, 255, 220), 30), "eye_swarm": ((255, 60, 90), 20),
+                  "drone": ((255, 70, 70), 18), "ad_tv": ((140, 200, 255), 30)}
+
+    def _collect_lights(self, off, state, t):
+        """Свет излучают игрок, боссы, часть мобов, снаряды, взрывы и особые объекты комнаты."""
+        lights = []
+        p = self.player
+        lights.append((p.pos.x + off.x, p.pos.y + off.y, int(36 + 54 * state.darkness), (255, 236, 190), 0.5 + 0.5 * state.darkness))
+        for e in self.room.enemies:
+            if e.dead or e.spawn_t > 0:
+                continue
+            if e.kind in self.BOSS_LIGHTS:
+                color, radius, power = self.BOSS_LIGHTS[e.kind]
+                flicker = 1.0 + 0.06 * math.sin(t * 7 + e.pos.x)
+                lights.append((e.pos.x + off.x, e.pos.y + off.y, int(radius * flicker), color, power))
+            elif e.kind in self.MOB_LIGHTS:
+                color, radius = self.MOB_LIGHTS[e.kind]
+                lights.append((e.pos.x + off.x, e.pos.y + off.y, radius, color, 0.7))
+        for pr in self.eshots[:40]:
+            lights.append((pr.pos.x + off.x, pr.pos.y + off.y, 16, pr.color, 0.6))
+        for pr in self.pshots[:20]:
+            lights.append((pr.pos.x + off.x, pr.pos.y + off.y, 14, (255, 240, 150), 0.5))
+        for b in self.blasts:
+            lights.append((b["pos"].x + off.x, b["pos"].y + off.y, int(b["r"] * 2.2), (255, 170, 60), 1.0 - b["t"] / 0.4))
+        if self.imp is not None:
+            lights.append((self.imp["pos"].x + off.x, self.imp["pos"].y + off.y, 26, (255, 120, 50), 0.7))
+        for pos, radius, color, power in self.room.light_sources():
+            lights.append((pos.x + off.x, pos.y + off.y, radius, color, power))
+        return lights
+
+    def _apply_lighting(self, surf, off, t):
+        gfx = self.game.gfx
+        if not gfx["shaders"]:
+            return
+        state = self.light_state()
+        self.game.lighting.apply(surf, state, self._collect_lights(off, state, t), gfx)
+
     def _draw_extras(self, surf, off, sprites):
         """Якорь с цепью, летящие гранаты, взрывы и компактный бес."""
         p = self.player
@@ -1367,6 +1783,33 @@ class PlayState:
         if self.imp is not None:
             img = sprites.get("imp_mini", self.imp["flip"])
             surf.blit(img, img.get_rect(center=(int(self.imp["pos"].x + off.x), int(self.imp["pos"].y + off.y))))
+        self._draw_geyser(surf, off, self.balancer)
+        self._draw_geyser(surf, off, self.scream)
+        self._draw_balancer_charge(surf, off)
+        if "thorn_cannon" in p.flags:   # Колючка-пушка парит рядом с игроком
+            icon = sprites.icon("thorn_cannon")
+            bob = int(math.sin(pygame.time.get_ticks() / 260) * 2)
+            surf.blit(icon, icon.get_rect(center=(int(p.pos.x + 15 + off.x), int(p.pos.y - 12 + off.y) + bob)))
+        self._draw_stuck(surf, off, p.pos, p.needles, 7)
+        for e in self.room.enemies:
+            if getattr(e, "_thorns", None):
+                self._draw_stuck(surf, off, e.pos, e._thorns, e.radius)
+
+    def _draw_stuck(self, surf, off, pos, needles, radius):
+        """Застрявшие иголки торчат из цели; тонкая полоска показывает, сколько ещё они продержатся."""
+        if not needles:
+            return
+        cx, cy = pos.x + off.x, pos.y + off.y
+        for i, left in enumerate(needles.timers):
+            a = i * 2.4 + 0.7
+            ca, sa = math.cos(a), math.sin(a)
+            pygame.draw.line(surf, (34, 24, 48), (cx + ca * radius * 0.6, cy + sa * radius * 0.6),
+                             (cx + ca * (radius + 5), cy + sa * (radius + 5)), 3)
+            pygame.draw.line(surf, (170, 215, 90), (cx + ca * radius * 0.6, cy + sa * radius * 0.6),
+                             (cx + ca * (radius + 5), cy + sa * (radius + 5)), 1)
+        frac = max(timers_left / needles.stick_time for timers_left in needles.timers)
+        pygame.draw.rect(surf, (30, 20, 45), (cx - 8, cy - radius - 11, 16, 3))
+        pygame.draw.rect(surf, (170, 215, 90), (cx - 7, cy - radius - 10, int(14 * frac), 1))
 
     def _draw_glitch(self, surf):
         """Несколько горизонтальных полос сдвигаются на пару пикселей (читаемость сохраняется)."""
@@ -1381,7 +1824,7 @@ class PlayState:
 
     def _draw_prompt(self, surf, prop):
         label = {"pedestal": "забрать", "heal": "купить сердце", "npc": "говорить", "altar": "алтарь",
-                 "portal": "войти в портал", "rift": "прыгнуть в разлом", "card": "карточка (выбор из трёх)", "gates": "пройти через врата", "house": "войти в дом", "exit": "выйти на улицу"}.get(prop.kind, "")
+                 "portal": "войти в портал", "sky_portal": "войти в белый портал", "rift": "прыгнуть в разлом", "card": "карточка (выбор из трёх)", "gates": "пройти через врата", "house": "войти в дом", "exit": "выйти на улицу"}.get(prop.kind, "")
         if prop.kind == "pedestal":
             item = self.db.items[prop.item_id]
             label = item.name + (f" — {prop.price} мон." if prop.price else "")
@@ -1451,6 +1894,13 @@ class PlayState:
         elif prop.kind == "exit":
             pygame.draw.rect(surf, (110, 70, 45), (x - 8, y - 4, 16, 14))
             pygame.draw.rect(surf, (255, 235, 150), (x - 6, y - 2, 12, 10), 1)
+        elif prop.kind == "sky_portal":   # белый вихрь в золотой оправе: ведёт на Небеса
+            pygame.draw.circle(surf, (255, 205, 80), (x, y), 19, 3)
+            for i in range(4):
+                pygame.draw.circle(surf, (255, 255, 255), (x, y), 15 - i * 4 + int(math.sin(t * 4 + i) * 2), 1 if i % 2 else 2)
+            for i in range(6):
+                a = t * 3 + i * math.tau / 6
+                pygame.draw.circle(surf, (255, 250, 220), (int(x + math.cos(a) * 12), int(y + math.sin(a) * 12)), 1)
         elif prop.kind == "portal":
             for i in range(3):
                 pygame.draw.circle(surf, (255, 255, 200 - i * 50), (x, y), 14 - i * 4 + int(math.sin(t * 5 + i) * 2), 2)

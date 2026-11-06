@@ -26,6 +26,8 @@ class Hazard:
         return pygame.Vector2(self.rect.center)
 
     def hits(self, pos, radius):
+        if self.kind == "blast":   # взрыв гранаты круглый
+            return self.center.distance_to(pos) <= self.rect.w / 2 + radius
         return circle_rect_overlap(pos, radius, self.rect)
 
     def update(self, dt):
@@ -41,10 +43,19 @@ class Hazard:
     def draw(self, surf, off):
         if not self.active:
             if int(pygame.time.get_ticks() / 90) % 2:
-                pygame.draw.rect(surf, (255, 70, 70), self.warn_rect.move(off.x, off.y), 2)
+                if self.kind == "blast":
+                    w = self.warn_rect.move(off.x, off.y)
+                    pygame.draw.circle(surf, (255, 70, 70), w.center, w.w // 2, 2)
+                else:
+                    pygame.draw.rect(surf, (255, 70, 70), self.warn_rect.move(off.x, off.y), 2)
             return
         r = self.rect.move(off.x, off.y)
-        if self.kind == "lava":
+        if self.kind == "blast":
+            c = (r.centerx, r.centery)
+            pygame.draw.circle(surf, (255, 120, 40), c, r.w // 2)
+            pygame.draw.circle(surf, (255, 235, 150), c, max(2, r.w // 3))
+            pygame.draw.circle(surf, (255, 220, 90), c, r.w // 2, 2)
+        elif self.kind == "lava":
             pygame.draw.rect(surf, (255, 120, 30), r)
             pygame.draw.rect(surf, (255, 225, 90), r, 3)
         elif self.kind == "wing":

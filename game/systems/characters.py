@@ -31,8 +31,11 @@ def load_characters(item_db, path=None):
             if trait not in TRAITS:
                 raise ValueError(f"персонаж {c['id']}: неизвестная особенность {trait}")
         unlock = c.get("unlock")
-        if unlock is not None and not (isinstance(unlock.get("boss"), str) and int(unlock.get("kills", 0)) > 0):
-            raise ValueError(f"персонаж {c['id']}: неверное условие открытия")
+        if unlock is not None:
+            by_boss = isinstance(unlock.get("boss"), str) and int(unlock.get("kills", 0)) > 0
+            by_ending = isinstance(unlock.get("ending"), str) and bool(unlock["ending"])   # открывается концовкой
+            if not (by_boss or by_ending):
+                raise ValueError(f"персонаж {c['id']}: неверное условие открытия")
         result[c["id"]] = {"scale": 1.0, "traits": [], "unlock": None, **c,
                            "mods": [tuple(m) for m in c["mods"]]}
     if DEFAULT_ID not in result or result[DEFAULT_ID]["unlock"] is not None:
@@ -47,6 +50,8 @@ def kills(save_data, boss_id):
 def is_unlocked(char, save_data, unlock_all=False):
     if unlock_all or char["unlock"] is None:
         return True
+    if "ending" in char["unlock"]:
+        return char["unlock"]["ending"] in save_data.get("endings", [])
     return kills(save_data, char["unlock"]["boss"]) >= char["unlock"]["kills"]
 
 
@@ -58,6 +63,8 @@ def progress(char, save_data):
     """(сколько побед, сколько нужно) — для экрана выбора. Для открытого с начала персонажа (0, 0)."""
     if char["unlock"] is None:
         return 0, 0
+    if "ending" in char["unlock"]:
+        return (1 if char["unlock"]["ending"] in save_data.get("endings", []) else 0), 1
     return kills(save_data, char["unlock"]["boss"]), char["unlock"]["kills"]
 
 
@@ -66,4 +73,4 @@ def record_boss_kill(save_data, chars, boss_id):
     counts = save_data.setdefault("boss_kills", {})
     counts[boss_id] = int(counts.get(boss_id, 0)) + 1
     return [cid for cid, c in chars.items()
-            if c["unlock"] and c["unlock"]["boss"] == boss_id and counts[boss_id] == c["unlock"]["kills"]]
+            if c["unlock"] and c["unlock"].get("boss") == boss_id and counts[boss_id] == c["unlock"]["kills"]]

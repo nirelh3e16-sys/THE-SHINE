@@ -5,6 +5,7 @@ import pygame
 
 from ..collision import push_out_of_rect
 from ..systems.inventory import Inventory
+from ..systems.needles import Needles
 
 
 class Player:
@@ -14,6 +15,9 @@ class Player:
     DECEL = 6.5       # остановка ≈ 0.15 с
     DODGE_TIME = 0.22
     DODGE_COOLDOWN = 0.9
+    ARMOR_TAKEN = 0.6   # Бронежилет поглощает 40% урона: в среднем проходит 60%
+    SHINE_HP = 1000.0       # финал Бога: в игрока вселяется раненый Шайн
+    SHINE_DAMAGE = 100.0
 
     def __init__(self, db, char=None):
         self.db = db
@@ -35,6 +39,8 @@ class Player:
         self.max_hp = int(self.stats["max_hp"])
         self.hp = self.max_hp
         self.iframes = 0.0
+        self.needles = Needles()    # иголки Живой ели, застрявшие в игроке
+        self._armor_carry = 0.0     # дробный остаток урона при поглощении бронёй
         self.dodge_t = 0.0
         self.dodge_cd = 0.0
         self.dodge_dir = pygame.Vector2(1, 0)
@@ -43,6 +49,7 @@ class Player:
         self.aim = pygame.Vector2(1, 0)
         self.moving = False
         self.flags = set()
+        self.form = None            # None или "shine" (финальный бой: игрок играет за Шайна)
         self.god = False            # тест-меню: неуязвимость
         self.debug_damage = None    # тест-меню: принудительные значения
         self.debug_max_hp = None
@@ -57,6 +64,8 @@ class Player:
             self.stats["damage"] = float(self.debug_damage)
         if self.debug_max_hp is not None:
             self.stats["max_hp"] = float(self.debug_max_hp)
+        if self.form == "shine":   # у Шайна свои, фиксированные здоровье и урон
+            self.stats["max_hp"], self.stats["damage"] = self.SHINE_HP, self.SHINE_DAMAGE
         self.flags = self.db.flags(self.inv.items)
         self.ghost = "ghost" in self.char.get("traits", []) or "ghost" in self.flags
         self.gravity_immune = "gravity_immune" in self.char.get("traits", []) or "gravity_immune" in self.flags
@@ -64,6 +73,14 @@ class Player:
         if self.max_hp > old_max:
             self.hp += self.max_hp - old_max
         self.hp = max(1, min(self.hp, self.max_hp)) if self.hp > 0 else 0
+
+    def set_form(self, form):
+        """Превращение (None — обычный игрок). Шайн получает полное здоровье и чуть больший хитбокс."""
+        self.form = form
+        self.RADIUS = 7 if form else 5 * self.char.get("scale", 1.0)
+        self.recompute()
+        if form:
+            self.hp = self.max_hp
 
     @property
     def invulnerable(self):
@@ -77,6 +94,10 @@ class Player:
     def hurt(self, amount, source_pos=None):
         if self.god or self.invulnerable or self.hp <= 0:
             return False
+        if "armor" in self.flags:   # Бронежилет: 40% урона поглощается (дробный остаток переносится на следующий удар)
+            total = amount * self.ARMOR_TAKEN + self._armor_carry
+            amount = int(total)
+            self._armor_carry = total - amount
         self.hp -= amount
         self.iframes = self.IFRAMES
         if source_pos is not None:
@@ -137,7 +158,7 @@ class Player:
     def draw(self, surf, off, sprites):
         if self.iframes > 0 and self.dodge_t <= 0 and int(self.iframes * 20) % 2:
             return
-        img = sprites.get("player_" + self.char_id, self.aim.x < 0)
+        img = sprites.get("player_shine_form" if self.form == "shine" else "player_" + self.char_id, self.aim.x < 0)
         bob = int(math.sin(pygame.time.get_ticks() / 80)) if self.moving else 0
         rect = img.get_rect(midbottom=(int(self.pos.x + off.x), int(self.pos.y + off.y) + int(self.RADIUS) + 4 + bob))
         if self.dodge_t > 0:

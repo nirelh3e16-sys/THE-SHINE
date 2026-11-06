@@ -10,10 +10,12 @@ from .save_system import SaveSystem
 from .settings import FPS, GAME_W, GAME_H, MAX_DT, load_config
 from .sprites import SpriteBook
 from .ui.text import draw_text
+from .graphics_settings import sanitize as sanitize_gfx
+from .lighting import Lighting
 from .steam import Steam
 from .systems import characters as char_logic
 from .states import (MenuState, SettingsState, IntroState, EndScreen, EndingState, CreditsState,
-                     CharacterSelectState)
+                     CharacterSelectState, GraphicsSettingsState)
 from .systems.audio import AudioManager
 from .systems.events import load_events
 from .systems.items import ItemDatabase
@@ -28,6 +30,8 @@ class Game:
         self.characters = char_logic.load_characters(self.data.items)
         self.selected_char = char_logic.DEFAULT_ID
         self.steam = Steam()
+        self.gfx = sanitize_gfx(settings.get("graphics"))   # настройки теней, света и смены дня и ночи
+        self.lighting = Lighting()
         self.display = Display(self.cfg["window_scale"], self.cfg["fullscreen"], self.cfg.get("gpu_present", True))
         self.display.fill_mode = settings.get("fill", "blur")
         self.sprites = SpriteBook(list(self.data.items.items.values()), self.characters)
@@ -49,6 +53,14 @@ class Game:
 
     def go_settings(self):
         self.state = SettingsState(self)
+
+    def go_graphics(self, back_state=None):
+        """Экран настроек графики; back_state — куда вернуться (например, на паузу)."""
+        self.state = GraphicsSettingsState(self, back_state)
+
+    def save_graphics(self):
+        self.save.data["settings"]["graphics"] = dict(self.gfx)
+        self.save.write()
 
     def unlocked_chars(self):
         return char_logic.unlocked_ids(self.characters, self.save.data, self.cfg.get("unlock_all_characters", False))

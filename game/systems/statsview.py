@@ -28,6 +28,8 @@ def build_stat_rows(player, rooms_cleared=0):
         traits.append("гравитация не действует")
     if traits:
         rows.append(("Особенности", ", ".join(traits)))
+    if "armor" in getattr(player, "flags", ()):
+        rows.append(("Броня", "поглощает 40% урона"))
     rows += [("Предметов", str(len(player.inv.items))), ("Монет", str(player.coins)), ("Комнат пройдено", str(rooms_cleared))]
     for stat, op, value, left in player.temp_buffs:
         shown = f"x{value:g}" if op == "mul" else f"{value:+g}"

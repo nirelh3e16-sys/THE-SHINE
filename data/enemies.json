@@ -235,5 +235,73 @@
   "spread_step": 0.26,
   "sprite": "idol",
   "coin": 0.5
+ },
+ "cherub": {
+  "name": "Херувим",
+  "hp": 22,
+  "speed": 58,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "burst",
+  "proj_speed": 135,
+  "sprite": "cherub",
+  "coin": 0.45
+ },
+ "cloudling": {
+  "name": "Грозовое облачко",
+  "hp": 14,
+  "speed": 72,
+  "radius": 7,
+  "contact": 1,
+  "behavior": "chase",
+  "sprite": "cloudling",
+  "coin": 0.3
+ },
+ "halo_ring": {
+  "name": "Живой нимб",
+  "hp": 24,
+  "speed": 0,
+  "radius": 7,
+  "contact": 1,
+  "behavior": "spin",
+  "fire": 0.42,
+  "proj_speed": 88,
+  "sprite": "halo",
+  "coin": 0.5
+ },
+ "dove": {
+  "name": "Белый голубь",
+  "hp": 12,
+  "speed": 62,
+  "radius": 6,
+  "contact": 1,
+  "behavior": "dive",
+  "dive_speed": 240,
+  "sprite": "dove",
+  "coin": 0.3
+ },
+ "trumpeter": {
+  "name": "Трубач",
+  "hp": 30,
+  "speed": 0,
+  "radius": 8,
+  "contact": 1,
+  "behavior": "shoot",
+  "fire": 2.2,
+  "proj_speed": 95,
+  "spread": 5,
+  "spread_step": 0.26,
+  "sprite": "trumpeter",
+  "coin": 0.5
+ },
+ "stone_angel": {
+  "name": "Каменный ангелок",
+  "hp": 60,
+  "speed": 30,
+  "radius": 10,
+  "contact": 2,
+  "behavior": "chase",
+  "sprite": "stone_angel",
+  "coin": 0.7
  }
 }

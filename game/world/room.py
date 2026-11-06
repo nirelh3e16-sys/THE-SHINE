@@ -7,6 +7,7 @@ import pygame
 from ..collision import push_out_of_rect
 from ..entities.boss import create_boss
 from ..entities.enemy import Enemy
+from ..entities.miniboss import MINIBOSSES, create_miniboss
 from ..settings import ROOM_X, ROOM_Y, ROOM_W, ROOM_H, DOOR_HALF
 from .dungeon import DIRS
 
@@ -88,10 +89,13 @@ class Room:
         self.spawn_requests = []
         self.shake_request = None
         self.effects_hint = None
-        self.cleared = spec.kind not in ("combat", "boss")
+        self.cleared = spec.kind not in ("combat", "boss", "miniboss")
         self.locked = False
         self.spawned = False
         self.visited = False
+        # Небеса: враги боевых комнат стоят смирно, пока кто-нибудь из них не получит удар (тогда бой начинают все)
+        self.passive = bool(zone.get("passive_enemies")) and spec.kind == "combat"
+        self.aggro = False
         self.data = data
         self._plan = []
         self._bg = None
@@ -190,6 +194,9 @@ class Room:
             self._plan = [(rng.choice(pool), self._free_spot(rng)) for _ in range(n)]
         elif self.kind == "boss":
             self._plan = [(self.zone["boss"], pygame.Vector2(CENTER.x, CENTER.y - 40))]
+        elif self.kind == "miniboss" and self.zone.get("miniboss"):
+            # мини-босс стоит один, без свиты; препятствий в комнате нет (арена открытая)
+            self._plan = [(self.zone["miniboss"], pygame.Vector2(CENTER.x, CENTER.y - 40))]
         elif self.kind == "treasure" and item_ids:
             if rng.random() < 0.4:  # вместо предмета — карточка (выбор одного из трёх)
                 self.props.append(Prop("card", CENTER, f"{self.ns}{pos}:0"))
@@ -225,6 +232,8 @@ class Room:
             self.enemies.append(self._make(kind, pos, hp_scale))
 
     def _make(self, kind, pos, hp_scale):
+        if kind in MINIBOSSES:
+            return create_miniboss(kind, pos, 1.0)
         if kind == self.zone.get("boss"):
             return create_boss(kind, pos, 1.0)
         return Enemy(kind, pos, self.data.enemies[kind], hp_scale)
@@ -366,9 +375,59 @@ class Room:
         pygame.draw.rect(bg, (255, 140, 40), a.inflate(6, 6), 1)
         return bg
 
+    @property
+    def dormant(self):
+        """Враги комнаты ещё не начали бой (Небеса): они ничего не делают и не ранят при касании."""
+        return self.passive and not self.aggro and self.spawned
+
+    def _door_rect(self, d, thickness=24):
+        dx, dy = DIRS[d]
+        c = self.door_center(d)
+        if dx:
+            return pygame.Rect(INTERIOR.left - thickness if dx < 0 else INTERIOR.right, c.y - DOOR_HALF, thickness, DOOR_HALF * 2)
+        return pygame.Rect(c.x - DOOR_HALF, INTERIOR.top - 32 if dy < 0 else INTERIOR.bottom, DOOR_HALF * 2, 32 if dy < 0 else 30)
+
+    def _build_sky_bg(self):
+        """Небеса: стен нет, виден только голубой небосвод. Комната — белый облачный остров, двери в золотой оправе."""
+        bg = pygame.Surface((480, 270))
+        for y in range(270):   # небо светлеет к горизонту
+            k = y / 269
+            pygame.draw.line(bg, (int(104 + 70 * k), int(184 + 40 * k), int(246 + 8 * k)), (0, y), (479, y))
+        rng = random.Random(f"sky:{self.spec.pos}")
+        for _ in range(16):    # далёкие облака вокруг острова
+            x, y = rng.randrange(0, 480), rng.randrange(0, 270)
+            if INTERIOR.inflate(30, 30).collidepoint(x, y):
+                continue
+            w = rng.randrange(26, 60)
+            pygame.draw.ellipse(bg, (232, 245, 255), (x - w // 2, y - 6, w, 12))
+            pygame.draw.ellipse(bg, (246, 251, 255), (x - w // 3, y - 11, w * 2 // 3, 13))
+        shadow = pygame.Rect(INTERIOR.left + 14, INTERIOR.bottom - 2, INTERIOR.width - 28, 14)   # остров парит: тень облака под ним
+        pygame.draw.ellipse(bg, (150, 196, 236), shadow)
+        for tx in range(INTERIOR.left, INTERIOR.right, 16):   # пушистый край острова
+            pygame.draw.circle(bg, (248, 251, 255), (tx + 8, INTERIOR.top), 9)
+            pygame.draw.circle(bg, (236, 243, 253), (tx + 8, INTERIOR.bottom), 10)
+        for ty in range(INTERIOR.top, INTERIOR.bottom, 16):
+            pygame.draw.circle(bg, (248, 251, 255), (INTERIOR.left, ty + 8), 9)
+            pygame.draw.circle(bg, (248, 251, 255), (INTERIOR.right, ty + 8), 9)
+        for ty in range(INTERIOR.top, INTERIOR.bottom, 16):
+            for tx in range(INTERIOR.left, INTERIOR.right, 16):
+                pair = self.zone["floor"]
+                bg.fill(pair[((tx // 16) + (ty // 16)) % 2], (tx, ty, 16, 16))
+        for _ in range(18):    # лёгкие завитки на облаке
+            x, y = rng.randrange(INTERIOR.left + 6, INTERIOR.right - 20), rng.randrange(INTERIOR.top + 6, INTERIOR.bottom - 6)
+            pygame.draw.line(bg, (220, 232, 248), (x, y), (x + rng.randrange(6, 16), y), 1)
+        for d in self.spec.doors:   # двери — проёмы в золотом ободке
+            r = self._door_rect(d)
+            bg.fill((255, 252, 240), r)
+            pygame.draw.rect(bg, (255, 200, 70), r.inflate(4, 4), 2)
+            pygame.draw.rect(bg, (255, 236, 150), r.inflate(-2, -2), 1)
+        return bg
+
     def _build_bg(self):
         if self.arena is not None:
             return self._build_arena_bg()
+        if self.zone.get("sky"):
+            return self._build_sky_bg()
         zone = self.zone
         bg = pygame.Surface((480, 270))
         bg.fill(zone["wall"])
@@ -437,8 +496,9 @@ class Room:
                     r = pygame.Rect(INTERIOR.left - 6 if dx < 0 else INTERIOR.right - 2, c.y - DOOR_HALF, 8, DOOR_HALF * 2)
                 else:
                     r = pygame.Rect(c.x - DOOR_HALF, INTERIOR.top - 6 if dy < 0 else INTERIOR.bottom - 2, DOOR_HALF * 2, 8)
-                pygame.draw.rect(surf, (110, 70, 40), r.move(off.x, off.y))
-                pygame.draw.rect(surf, (30, 20, 30), r.move(off.x, off.y), 1)
+                sky = self.zone.get("sky")   # на Небесах закрытая дверь — золотая решётка
+                pygame.draw.rect(surf, (255, 205, 80) if sky else (110, 70, 40), r.move(off.x, off.y))
+                pygame.draw.rect(surf, (255, 246, 200) if sky else (30, 20, 30), r.move(off.x, off.y), 1)
 
     # --- динамика комнаты: гравитация и перестройка стен ---
     def begin_reshuffle(self, player_pos, want=None):
@@ -511,6 +571,28 @@ class Room:
         if self.modifier == "shift":
             return "СТЕНЫ НЕСТАБИЛЬНЫ"
         return None
+
+    def light_sources(self):
+        """Постоянные источники света комнаты: (позиция, радиус, цвет, сила)."""
+        out = []
+        if self.arena is not None:   # лава вокруг платформы освещает её края
+            a = self.arena
+            for x in range(a.left, a.right + 1, max(40, a.w // 5)):
+                out.append((pygame.Vector2(x, a.top - 6), 70, (255, 110, 30), 0.8))
+                out.append((pygame.Vector2(x, a.bottom + 6), 70, (255, 110, 30), 0.8))
+        elif self._cracks:
+            for pts in self._cracks[::2]:
+                out.append((pygame.Vector2(pts[1]), 46, (255, 120, 35), 0.7))
+        for prop in self.props:
+            if prop.kind == "rift":
+                out.append((prop.pos, 80, (255, 120, 40), 1.0))
+            elif prop.kind == "gates":
+                out.append((prop.pos, 90, (255, 245, 200), 1.0))
+            elif prop.kind == "portal":
+                out.append((prop.pos, 60, (255, 255, 200), 0.8))
+            elif prop.kind in ("pedestal", "card"):
+                out.append((prop.pos, 30, (255, 230, 150), 0.5))
+        return out
 
     def draw_lava(self, surf, off, t):
         """Анимация лавы: потёки из трещин в стенах или волны на озере."""

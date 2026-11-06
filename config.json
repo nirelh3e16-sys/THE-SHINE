@@ -10,5 +10,6 @@
   "max_enemy_projectiles": 160,
   "max_particles": 300,
   "gpu_present": true,
-  "unlock_all_characters": false
+  "day_length_seconds": 480,
+  "unlock_all_characters": true
 }

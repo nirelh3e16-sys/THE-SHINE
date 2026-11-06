@@ -7,6 +7,11 @@ import pygame
 from ..entities.projectile import Projectile
 
 TV_KINDS = ("normal", "fast", "big", "spread", "pierce")
+HOMING_TURN = 5.0       # Старый пульт: насколько быстро снаряд поворачивает к цели, рад/с
+HOMING_RANGE = 280.0    # дальше этого расстояния снаряд цель не «видит»
+THORN_SPEED = 190.0     # скорость колючки из Колючки-пушки (Шипастая ярость ускоряет её)
+THORN_FURY_SPEED = 1.7
+THORN_LIFE = 1.2
 
 
 def _rot(v, angle):
@@ -24,6 +29,7 @@ def build_player_shots(player, aim, rng=random, force_kind=None, allow_melee=Tru
     if "smg" in flags:   # небольшой разброс у автомата
         aim = _rot(aim, rng.uniform(-0.06, 0.06))
     origin = player.pos + aim * 8
+    homing = "homing" in flags
     pierce = "pierce" in flags
     explode = "explosive_shots" in flags and "heavy" in flags
     color = (255, 90, 90) if crit else (255, 240, 120)
@@ -55,13 +61,14 @@ def build_player_shots(player, aim, rng=random, force_kind=None, allow_melee=Tru
         for i in range(5):
             a = (i - 2) * 0.17 + rng.uniform(-0.04, 0.04)
             shots.append(Projectile(origin, _rot(aim, a) * speed * rng.uniform(0.9, 1.1), dmg * 0.55,
-                                    life * 0.6, 2.5, True, color, pierce, knock, explode))
+                                    life * 0.6, 2.5, True, color, pierce, knock, explode, homing=homing))
         return shots
     if kind == "spread":
         for a in (-0.22, 0.0, 0.22):
-            shots.append(Projectile(origin, _rot(aim, a) * speed, dmg * 0.6, life, radius, True, color, pierce, knock, explode))
+            shots.append(Projectile(origin, _rot(aim, a) * speed, dmg * 0.6, life, radius, True, color, pierce, knock, explode,
+                                    homing=homing))
     else:
-        shots.append(Projectile(origin, aim * speed, dmg, life, radius, True, color, pierce, knock, explode))
+        shots.append(Projectile(origin, aim * speed, dmg, life, radius, True, color, pierce, knock, explode, homing=homing))
     return shots
 
 
@@ -76,3 +83,31 @@ def soldier_shot(player, origin, target_pos, rng=random):
         s.pos = pygame.Vector2(origin)
         s.damage *= 0.5
     return shots
+
+
+def steer_homing(pr, targets, dt):
+    """Старый пульт: плавно поворачивает снаряд к ближайшему врагу, не меняя его скорость."""
+    if not targets or pr.vel.length_squared() == 0:
+        return
+    target = min(targets, key=lambda e: e.pos.distance_squared_to(pr.pos))
+    to = target.pos - pr.pos
+    if to.length_squared() == 0 or to.length() > HOMING_RANGE:
+        return
+    speed = pr.vel.length()
+    cur = math.atan2(pr.vel.y, pr.vel.x)
+    diff = (math.atan2(to.y, to.x) - cur + math.pi) % math.tau - math.pi
+    limit = HOMING_TURN * dt
+    ang = cur + max(-limit, min(limit, diff))
+    pr.vel = pygame.Vector2(math.cos(ang), math.sin(ang)) * speed
+
+
+def thorn_shot(player, origin, target_pos):
+    """Выстрел Колючки-пушки по ближайшему врагу. С Шипастой яростью колючка быстрее и взрывается на исходе."""
+    aim = pygame.Vector2(target_pos) - origin
+    if aim.length_squared() == 0:
+        return []
+    fury = "thorn_fury" in player.flags
+    speed = THORN_SPEED * (THORN_FURY_SPEED if fury else 1.0)
+    dmg = max(1.5, player.stats["damage"] * 0.6)
+    return [Projectile(origin, aim.normalize() * speed, dmg, THORN_LIFE, 3, True, (140, 225, 90), knockback=40.0,
+                       kind="thorn", homing="homing" in player.flags, expire_explode=fury)]

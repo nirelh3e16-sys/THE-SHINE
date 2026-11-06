@@ -11,7 +11,7 @@ from ..settings import GAME_W, GAME_H
 
 KIND_COLORS = {"start": (200, 200, 200), "combat": (110, 110, 130), "treasure": (255, 215, 70),
                "shop": (90, 200, 255), "event": (200, 120, 255), "boss": (230, 60, 70),
-               "house": (255, 170, 90), "unknown": (60, 55, 75)}
+               "house": (255, 170, 90), "miniboss": (240, 140, 60), "unknown": (60, 55, 75)}
 
 # базовые углы элементов: здоровье+монеты, активный предмет, ряд предметов, миникарта
 BASE_CORNER = {"vitals": 0, "active": 1, "items": 2, "map": 3}
@@ -67,7 +67,7 @@ def draw_hud(surf, play, sprites):
     _draw_active(surf, play, sprites, corner_of("active", layout))
     if not glitch:
         draw_minimap(surf, play, corner_of("map", layout))
-    boss = play.boss()
+    boss = play.boss() or play.miniboss()   # у мини-босса такая же полоска здоровья
     if boss is not None and boss.spawn_t <= 0:
         w = 220
         x, y = (GAME_W - w) // 2, 244
@@ -80,10 +80,18 @@ def draw_hud(surf, play, sprites):
 
 
 def _draw_vitals(surf, p, sprites, corner, show_coins):
-    hearts = (p.max_hp + 1) // 2
+    big = p.max_hp > 40   # Шайн (1000 здоровья): сердец не нарисовать — вместо них полоска
+    hearts = 0 if big else (p.max_hp + 1) // 2
     per_row = 8
-    rows = (hearts + per_row - 1) // per_row
+    rows = 1 if big else (hearts + per_row - 1) // per_row
     right, bottom = _is_right(corner), _is_bottom(corner)
+    if big:
+        w = 84
+        x = GAME_W - 6 - w if right else 6
+        y = (GAME_H - 14) if bottom else 4
+        pygame.draw.rect(surf, (30, 10, 40), (x - 1, y - 1, w + 2, 10))
+        pygame.draw.rect(surf, (200, 70, 230), (x, y, int(w * max(0, p.hp) / p.max_hp), 8))
+        draw_text(surf, f"ШАЙН {max(0, p.hp)}/{p.max_hp}", (x + w // 2, y - 1), "white", 8, "midtop")
     for i in range(hearts):
         hp_here = p.hp - i * 2
         name = "heart_full" if hp_here >= 2 else "heart_half" if hp_here == 1 else "heart_empty"
@@ -144,7 +152,7 @@ def draw_minimap(surf, play, corner=3):
     known = d.known_rooms()
     show = set(known)
     if compass:
-        show |= {pos for pos, s in d.specs.items() if s.kind in ("treasure", "shop", "boss", "event", "house")}
+        show |= {pos for pos, s in d.specs.items() if s.kind in ("treasure", "shop", "boss", "event", "house", "miniboss")}
         if d.false_mark:
             show.add(d.false_mark)
     for pos in show:

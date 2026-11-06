@@ -30,8 +30,12 @@ MUSIC_TRACKS = {
     "city_combat": "Urban_Collapse.mp3",   # боевые комнаты Города
     "menu": "THE_SHINE.mp3",               # меню, экраны смерти и победы (и титры, когда появятся)
     "suburb_combat": "Suburban_Nightmare.mp3",  # боевые комнаты пригорода и домов
+    "miniboss": "mini-bosses.mp3",         # бой с любым мини-боссом
+    "heaven_combat": "Heaven.mp3",         # боевые комнаты Небес
+    "god_boss": "God.mp3",                 # бой с Богом
 }
-MUSIC_FALLBACK = {"hell_combat": "center_combat", "hell_boss": "shine_boss"}
+MUSIC_FALLBACK = {"hell_combat": "center_combat", "hell_boss": "shine_boss",
+                  "miniboss": "boss", "heaven_combat": "combat", "god_boss": "shine_boss"}
 MUSIC_GAIN = 0.7  # музыка немного тише эффектов
 
 

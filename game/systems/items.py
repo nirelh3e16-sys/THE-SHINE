@@ -14,7 +14,7 @@ BASE_STATS = {
     "max_hp": 6.0,     # 2 единицы = 1 сердце
     "speed": 105.0,
 }
-STAT_MIN = {"damage": 0.5, "fire_delay": 0.1, "shot_speed": 60.0, "range": 0.1, "max_hp": 2.0, "speed": 50.0, "luck": -5.0}
+STAT_MIN = {"damage": 0.5, "fire_delay": 0.1, "shot_speed": 60.0, "range": 0.1, "max_hp": 1.0, "speed": 50.0, "luck": -5.0}
 VALID_OPS = ("add", "mul")
 
 
@@ -28,6 +28,7 @@ class ItemDef:
     mods: dict = field(default_factory=dict)
     flags: tuple = ()
     active: dict = None
+    drop_only: bool = False   # выпадает только с мини-боссов: не попадает в магазины, сокровищницы и карточки
 
 
 class ItemDatabase:
@@ -60,7 +61,8 @@ class ItemDatabase:
             items[entry["id"]] = ItemDef(
                 id=entry["id"], name=entry["name"], desc=entry["desc"], icon=entry["icon"],
                 color=tuple(entry["color"]), mods={k: tuple(v) for k, v in mods.items()},
-                flags=tuple(entry.get("flags", [])), active=entry.get("active"))
+                flags=tuple(entry.get("flags", [])), active=entry.get("active"),
+                drop_only=bool(entry.get("drop_only", False)))
         combos = raw.get("combos", [])
         for combo in combos:
             for need in combo["needs"]:
@@ -89,9 +91,13 @@ class ItemDatabase:
             stats[stat] = max(low, stats[stat])
         return stats
 
+    def regular_ids(self):
+        """Предметы, которые могут лежать в магазинах и сокровищницах (без наград мини-боссов)."""
+        return sorted(i for i, d in self.items.items() if not d.drop_only)
+
     def card_options(self, owned, rng, n=3):
         """До n случайных предметов, которых у игрока ещё нет (для карточек)."""
-        pool = sorted(i for i in self.items if i not in set(owned))
+        pool = sorted(i for i, d in self.items.items() if i not in set(owned) and not d.drop_only)
         return rng.sample(pool, min(n, len(pool)))
 
     def active_combos(self, owned):

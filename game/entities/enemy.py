@@ -43,6 +43,7 @@ class Enemy:
         self.knock = pygame.Vector2()
         self.poison_t = 0.0
         self.dead = False
+        self.provoked = False   # его тронули (Небеса: после этого начинают бой все враги комнаты)
         self.state = "idle"
         self.timer = random.uniform(0.5, 1.5)
         self.dir = pygame.Vector2(1, 0)
@@ -61,6 +62,7 @@ class Enemy:
             return False
         self.hp -= dmg
         self.hurt_t = 0.12
+        self.provoked = True
         if direction is not None and direction.length_squared() > 0:
             self.knock += direction.normalize() * knockback
         if self.hp <= 0:
@@ -83,6 +85,16 @@ class Enemy:
             self.hp -= 1.0 * dt
             if self.hp <= 0:
                 self.dead = True
+        if self.knock.length_squared() > 1:
+            self.pos += self.knock * dt
+            self.knock *= max(0.0, 1 - 8 * dt)
+
+    def idle(self, dt):
+        """Небесный враг, которого ещё не тронули: просто висит на месте и ничего не делает."""
+        if self.spawn_t > 0:
+            self.spawn_t -= dt
+            return
+        self.hurt_t = max(0.0, self.hurt_t - dt)
         if self.knock.length_squared() > 1:
             self.pos += self.knock * dt
             self.knock *= max(0.0, 1 - 8 * dt)

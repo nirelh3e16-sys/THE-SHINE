@@ -1404,4 +1404,7 @@ def create_boss(boss_id, pos, hp_scale=1.0):
         return Shine(pos, hp_scale)
     if boss_id == "imp":
         return Imp(pos, hp_scale)
+    if boss_id == "god":
+        from .god import God
+        return God(pos, hp_scale)
     raise ValueError(f"неизвестный босс: {boss_id}")
