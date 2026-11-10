@@ -11,5 +11,5 @@
   "max_particles": 300,
   "gpu_present": true,
   "day_length_seconds": 480,
-  "unlock_all_characters": false
+  "unlock_all_characters": true
 }
