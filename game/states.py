@@ -6,7 +6,9 @@ import pygame
 
 from .ui.menus import Menu
 from .settings import PUBLISHER
-from .graphics_settings import cycle as gfx_cycle, TIME_LABELS, STRENGTH_LABELS, BRIGHTNESS_LABELS
+from . import i18n
+from .i18n import LANGUAGE_NAMES
+from .graphics_settings import cycle as gfx_cycle, TIME_LABELS, STRENGTH_LABELS, BRIGHTNESS_LABELS, QUALITY_LABELS
 from .systems.characters import progress as char_progress
 from .world.zones import ZONES
 from .ui.text import draw_text, wrap
@@ -97,7 +99,8 @@ class MenuState:
         entries = []
         if self.game.save.data.get("current_run"):
             entries.append(("Продолжить", self.game.continue_run))
-        entries += [("Новая игра", self.game.new_game), ("Настройки", self.game.go_settings), ("Выход", self.game.quit)]
+        entries += [("Новая игра", self.game.new_game), ("Бестиарий", self.game.go_bestiary),
+                    ("Настройки", self.game.go_settings), ("Выход", self.game.quit)]
         self.menu = Menu("THE SHINE", entries, corner=True)
 
     def handle_event(self, event):
@@ -128,6 +131,7 @@ class SettingsState:
             (f"Громкость: {int(g.audio.volume * 100)}%", self.volume),
             (f"Тряска экрана: {'вкл' if g.effects.shake_enabled else 'выкл'}", self.shake),
             ("Края экрана: " + ("размытие" if g.display.fill_mode == "blur" else "растянуть"), self.fill),
+            (f"Language / Язык: {LANGUAGE_NAMES[i18n.get_language()]}", self.language),   # подпись всегда на двух языках
             ("Графика и эффекты", g.go_graphics),
             ("Полный экран (F11)", g.display.toggle_fullscreen),
             ("Назад", g.go_menu),
@@ -138,6 +142,11 @@ class SettingsState:
         v = self.game.audio.volume + 0.2
         self.game.audio.set_volume(0.0 if v > 1.01 else v)
         self.game.save.data["settings"]["volume"] = self.game.audio.volume
+        self.game.audio.play("pickup")
+        self._build()
+
+    def language(self):
+        self.game.set_language(i18n.next_language(i18n.get_language()))
         self.game.audio.play("pickup")
         self._build()
 
@@ -418,7 +427,8 @@ class EndingState:
 CREDITS_LINES = (
     "THE SHINE", "", "Издатель", "FreeDom Studio", "", "Музыка", "FreeDom Studio", "",
     "Игра создана на Python и Pygame", "", "Программирование", "совместно с Claude (Anthropic)", "",
-    "Особая благодарность", "Лесник, Сосед, Мэр, Хаос", "и всем, кто так и не заслужил", "", "", "Спасибо за игру", "",
+    "Особая благодарность", "Лесник, Сосед, Мэр, Хаос", "и всем, кто так и не заслужил", "",
+    "Спасибо за идею", "Retro_MEGA11 — за бестиарий", "", "", "Спасибо за игру", "",
 )
 
 
@@ -588,9 +598,10 @@ class GraphicsSettingsState:
             (f"Свет игрока и боссов: {onoff(g['lights'])}", lambda: self._toggle("lights")),
             (f"Время суток: {TIME_LABELS[g['time_mode']]}", lambda: self._toggle("time_mode")),
             (f"Яркость ночи: {BRIGHTNESS_LABELS[g['night_brightness']]}", lambda: self._toggle("night_brightness")),
+            (f"Качество эффектов: {QUALITY_LABELS[g['effects_quality']]}", lambda: self._toggle("effects_quality")),
             ("Назад", self.back),
         ]
-        self.menu = Menu("ГРАФИКА", entries, top=62, step=24, title_y=26)
+        self.menu = Menu("ГРАФИКА", entries, top=56, step=22, title_y=24)
         self.menu.selected = min(sel, len(entries) - 1)
 
     def handle_event(self, event):

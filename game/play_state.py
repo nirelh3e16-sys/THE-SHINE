@@ -1417,6 +1417,8 @@ class PlayState:
                 e.take_damage(pr.damage * 0.5, e.pos - pr.pos, 120)
 
     def _enemy_died(self, e):
+        if not self.cheated:   # записи бестиария открываются победой (тест-забег прогресса не даёт)
+            self.game.record_defeat(("boss:" + e.kind) if getattr(e, "is_boss", False) else e.kind)
         self.player.inv.register_kill()
         fx = self.game.effects
         fx.burst(e.pos, (255, 255, 255), 12, 120, 0.5, 3)

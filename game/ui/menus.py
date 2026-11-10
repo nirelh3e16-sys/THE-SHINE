@@ -2,6 +2,7 @@
 import pygame
 
 from .text import draw_text, wrap
+from ..i18n import tr
 from ..settings import GAME_W, GAME_H
 from ..systems.morality import TESTIMONIES
 
@@ -41,12 +42,14 @@ class Menu:
             draw_text(surf, self.title, (GAME_W - 14, self._y(0) - 22), "gold", 30, "bottomright")
             for i, (label, _) in enumerate(self.entries):
                 sel = i == self.selected
+                label = tr(label)
                 draw_text(surf, (label + " <") if sel else label, (GAME_W - 14, self._y(i)),
                           "gold" if sel else "white", 15, "midright")
             return
         draw_text(surf, self.title, (GAME_W // 2, self.title_y), "gold", 26, "center")
         for i, (label, _) in enumerate(self.entries):
             sel = i == self.selected
+            label = tr(label)
             draw_text(surf, ("> " if sel else "") + label + (" <" if sel else ""), (GAME_W // 2, self._y(i)),
                       "gold" if sel else "white", 14, "center")
 

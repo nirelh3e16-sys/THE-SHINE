@@ -14,6 +14,10 @@ from .graphics_settings import sanitize as sanitize_gfx
 from .lighting import Lighting
 from .steam import Steam
 from .systems import characters as char_logic
+from . import i18n
+from .bestiary import BestiaryState
+from .systems.quality import AdaptiveQuality
+from .ui import text as text_ui
 from .states import (MenuState, SettingsState, IntroState, EndScreen, EndingState, CreditsState,
                      CharacterSelectState, GraphicsSettingsState)
 from .systems.audio import AudioManager
@@ -32,6 +36,8 @@ class Game:
         self.steam = Steam()
         self.gfx = sanitize_gfx(settings.get("graphics"))   # настройки теней, света и смены дня и ночи
         self.lighting = Lighting()
+        self.quality = AdaptiveQuality(FPS)   # подстраивает качество эффектов под скорость игры
+        i18n.set_language(i18n.sanitize_language(settings.get("language")))   # по умолчанию английский
         self.display = Display(self.cfg["window_scale"], self.cfg["fullscreen"], self.cfg.get("gpu_present", True))
         self.display.fill_mode = settings.get("fill", "blur")
         self.sprites = SpriteBook(list(self.data.items.items.values()), self.characters)
@@ -53,6 +59,24 @@ class Game:
 
     def go_settings(self):
         self.state = SettingsState(self)
+
+    def go_bestiary(self):
+        self.state = BestiaryState(self)
+
+    def set_language(self, language):
+        """Сменить язык интерфейса (en/ru) и запомнить выбор."""
+        language = i18n.sanitize_language(language)
+        i18n.set_language(language)
+        text_ui.clear_caches()
+        self.save.data["settings"]["language"] = language
+        self.save.write()
+
+    def record_defeat(self, kind):
+        """Запомнить, что игрок победил моба/босса этого вида: запись появится в бестиарии."""
+        seen = self.save.data.setdefault("defeated", [])
+        if kind not in seen:
+            seen.append(kind)
+            self.save.write()
 
     def go_graphics(self, back_state=None):
         """Экран настроек графики; back_state — куда вернуться (например, на паузу)."""
@@ -136,7 +160,10 @@ class Game:
     # --- цикл ---
     def run(self):
         while self.running:
-            dt = min(self.clock.tick(FPS) / 1000.0, MAX_DT)
+            raw_dt = self.clock.tick(FPS) / 1000.0
+            dt = min(raw_dt, MAX_DT)
+            self.quality.update(raw_dt)
+            self.lighting.quality = self.quality.effective(self.gfx.get("effects_quality", "auto"))
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False

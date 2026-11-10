@@ -8,6 +8,7 @@ DEFAULTS = {
     "lights": True,           # свет от игрока, боссов и источников
     "time_mode": "auto",      # auto | dawn | day | sunset | night
     "night_brightness": 1,    # 0 тёмная, 1 средняя, 2 светлая
+    "effects_quality": "auto",  # auto — подстраивается под скорость игры | high | low
 }
 TIME_MODES = ("auto", "dawn", "day", "sunset", "night")
 TIME_LABELS = {"auto": "смена по времени", "dawn": "всегда рассвет", "day": "всегда день",
@@ -16,6 +17,10 @@ STRENGTH_LABELS = ("слабая", "средняя", "сильная")
 BRIGHTNESS_LABELS = ("тёмная", "средняя", "светлая")
 SHADOW_ALPHA = (0.55, 0.8, 1.05)     # множитель непрозрачности теней
 NIGHT_MULT = (1.0, 0.8, 0.6)         # множитель затемнения по настройке яркости ночи
+
+
+QUALITY_MODES = ("auto", "high", "low")
+QUALITY_LABELS = {"auto": "авто", "high": "высокое", "low": "низкое"}
 
 
 def sanitize(raw):
@@ -31,6 +36,8 @@ def sanitize(raw):
             cfg[key] = raw[key]
     if raw.get("time_mode") in TIME_MODES:
         cfg["time_mode"] = raw["time_mode"]
+    if raw.get("effects_quality") in QUALITY_MODES:
+        cfg["effects_quality"] = raw["effects_quality"]
     return cfg
 
 
@@ -38,6 +45,8 @@ def cycle(cfg, key):
     """Переключает параметр на следующее значение."""
     if key == "time_mode":
         cfg[key] = TIME_MODES[(TIME_MODES.index(cfg[key]) + 1) % len(TIME_MODES)]
+    elif key == "effects_quality":
+        cfg[key] = QUALITY_MODES[(QUALITY_MODES.index(cfg[key]) + 1) % len(QUALITY_MODES)]
     elif key in ("shadow_strength", "night_brightness"):
         cfg[key] = (cfg[key] + 1) % 3
     else:

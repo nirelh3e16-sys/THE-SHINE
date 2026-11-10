@@ -14,9 +14,11 @@ DEFAULT_SAVE = {
     "wins": 0,
     "best_rooms_cleared": 0,
     "seen_items": [],
+    "defeated": [],          # виды мобов, боссов и мини-боссов, которых игрок побеждал (бестиарий)
     "testimonies": [],
     "legacy_sins": {s: 0 for s in SINS},
-    "settings": {"volume": 0.6, "screen_shake": True, "fill": "blur", "show_fps": False, "graphics": {}},
+    "settings": {"volume": 0.6, "screen_shake": True, "fill": "blur", "show_fps": False, "graphics": {},
+                 "language": "en"},   # язык интерфейса: английский по умолчанию, можно переключить на русский
     "endings": [],
     "boss_kills": {},
     "current_run": None,

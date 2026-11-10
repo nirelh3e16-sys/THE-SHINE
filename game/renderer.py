@@ -17,7 +17,9 @@ class Display:
         self._offset = (0, 0)
         self._fx = self._fy = 1.0
         self.fill_mode = "blur"   # "blur" — размытое продолжение кадра по краям, "stretch" — растянуть
-        self._shade = None
+        self._ambient = None        # кэш размытого фона вокруг кадра (обновляется раз в AMBIENT_EVERY кадров)
+        self._ambient_age = 0
+        self._scaled = None         # буфер для масштабирования кадра: не выделяем новую поверхность каждый кадр
 
     @staticmethod
     def _desktop_size():
@@ -60,7 +62,7 @@ class Display:
         if self.fill_mode == "stretch":
             self._offset = (0, 0)
             self._fx, self._fy = ww / GAME_W, wh / GAME_H
-            win.blit(pygame.transform.scale(self.surface, (ww, wh)), (0, 0))
+            win.blit(self._scale_to((ww, wh)), (0, 0))
             pygame.display.flip()
             return
         factor = min(ww / GAME_W, wh / GAME_H)
@@ -70,18 +72,40 @@ class Display:
         self._offset = ((ww - size[0]) // 2, (wh - size[1]) // 2)
         self._fx = self._fy = factor
         if size[0] < ww or size[1] < wh:
-            self._draw_ambient(win, (ww, wh))
-        win.blit(pygame.transform.scale(self.surface, size), self._offset)
+            self._draw_ambient(win, (ww, wh), pygame.Rect(self._offset, size))
+        if size == self.surface.get_size():
+            win.blit(self.surface, self._offset)      # масштаб 1:1 — копируем без лишнего масштабирования
+        else:
+            win.blit(self._scale_to(size), self._offset)
         pygame.display.flip()
 
-    def _draw_ambient(self, win, win_size):
-        """Вместо чёрных полос — размытое затемнённое продолжение кадра."""
-        tiny = pygame.transform.smoothscale(self.surface, (32, 18))
-        win.blit(pygame.transform.smoothscale(tiny, win_size), (0, 0))
-        if self._shade is None or self._shade.get_size() != win_size:
-            self._shade = pygame.Surface(win_size, pygame.SRCALPHA)
-            self._shade.fill((10, 5, 20, 120))
-        win.blit(self._shade, (0, 0))
+    def _scale_to(self, size):
+        """Масштабирует кадр в переиспользуемый буфер (раньше каждый кадр создавалась новая поверхность окна)."""
+        if self._scaled is None or self._scaled.get_size() != size:
+            self._scaled = pygame.Surface(size, 0, self.surface)   # тот же формат пикселей, что у кадра (требует pygame)
+        pygame.transform.scale(self.surface, size, self._scaled)
+        return self._scaled
+
+    AMBIENT_EVERY = 8   # размытый фон по краям пересчитывается раз в 8 кадров: он размытый, разницы глаз не заметит
+
+    def _draw_ambient(self, win, win_size, game_rect):
+        """Вместо чёрных полос — размытое затемнённое продолжение кадра. Считается редко, рисуется только на полосах."""
+        self._ambient_age += 1
+        if self._ambient is None or self._ambient.get_size() != win_size or self._ambient_age >= self.AMBIENT_EVERY:
+            self._ambient_age = 0
+            if self._ambient is None or self._ambient.get_size() != win_size:
+                self._ambient = pygame.Surface(win_size, 0, self.surface)
+            tiny = pygame.transform.smoothscale(self.surface, (32, 18))
+            pygame.transform.smoothscale(tiny, win_size, self._ambient)
+            self._ambient.fill((135, 135, 135), special_flags=pygame.BLEND_RGB_MULT)   # затемнение без alpha-слоя
+            self._ambient.fill((5, 2, 9), special_flags=pygame.BLEND_RGB_ADD)
+        ww, wh = win_size
+        strips = (pygame.Rect(0, 0, game_rect.left, wh), pygame.Rect(game_rect.right, 0, ww - game_rect.right, wh),
+                  pygame.Rect(game_rect.left, 0, game_rect.width, game_rect.top),
+                  pygame.Rect(game_rect.left, game_rect.bottom, game_rect.width, wh - game_rect.bottom))
+        for r in strips:                       # только полосы вокруг картинки, а не всё окно целиком
+            if r.width > 0 and r.height > 0:
+                win.blit(self._ambient, r.topleft, r)
 
     def to_game(self, pos):
         x = (pos[0] - self._offset[0]) / self._fx
@@ -101,6 +125,7 @@ class Effects:
         self.flash_t = 0.0
         self.flash_color = (255, 255, 255)
         self.flash_dur = 0.3
+        self._flash_overlay = None
         self.rng = random.Random()
 
     def burst(self, pos, color, n=8, speed=90, life=0.4, size=2):
@@ -146,10 +171,11 @@ class Effects:
 
     def draw_flash(self, surf):
         if self.flash_t > 0:
-            overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+            if self._flash_overlay is None or self._flash_overlay.get_size() != surf.get_size():
+                self._flash_overlay = pygame.Surface(surf.get_size(), pygame.SRCALPHA)   # один раз, а не каждый кадр
             alpha = int(255 * self.flash_t / self.flash_dur)
-            overlay.fill((*self.flash_color, alpha))
-            surf.blit(overlay, (0, 0))
+            self._flash_overlay.fill((*self.flash_color, alpha))
+            surf.blit(self._flash_overlay, (0, 0))
 
 
 def make_vignette(size):
@@ -159,4 +185,9 @@ def make_vignette(size):
     for i in range(8):
         alpha = int(10 + i * 6)
         pygame.draw.rect(surf, (10, 5, 25, alpha), (i * 6, i * 4, w - i * 12, h - i * 8), 6)
+    try:   # формат экрана — blit с прозрачностью быстрее
+        if pygame.display.get_surface() is not None:
+            return surf.convert_alpha()
+    except (pygame.error, AttributeError):
+        pass
     return surf

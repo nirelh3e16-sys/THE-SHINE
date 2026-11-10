@@ -1628,5 +1628,354 @@ class DormantEnemiesTests(unittest.TestCase):
         self.assertIsNotNone(room._build_bg())
 
 
+def _player_visible_strings():
+    """Все русские строки, которые игрок может увидеть: строки кода (кроме сообщений об ошибках и docstring) и данные."""
+    import ast
+    import re
+    cyr = re.compile("[А-Яа-яЁё]")
+    root = Path(__file__).resolve().parent.parent
+    out = {}
+
+    def add(k):
+        if k and cyr.search(k):
+            out[k] = 1
+
+    for path in sorted((root / "game").rglob("*.py")):
+        if path.name == "i18n.py":      # там регулярки с кириллицей — это код, а не текст для игрока
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        skip = set()
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef)) and n.body and isinstance(n.body[0], ast.Expr) \
+                    and isinstance(getattr(n.body[0], "value", None), ast.Constant):
+                skip.add(id(n.body[0].value))
+            if isinstance(n, ast.Raise):
+                skip.update(id(m) for m in ast.walk(n))
+        for n in ast.walk(tree):
+            if isinstance(n, ast.JoinedStr) and id(n) not in skip:
+                parts = []
+                for v in n.values:
+                    if isinstance(v, ast.Constant):
+                        parts.append(v.value)
+                        skip.add(id(v))
+                    else:
+                        parts.append("{}")
+                add("".join(parts))
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in skip:
+                add(n.value)
+
+    def walk(o):
+        if isinstance(o, str):
+            add(o)
+        elif isinstance(o, dict):
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for path in sorted((root / "data").glob("*.json")):
+        if path.name != "lang_en.json":
+            walk(json.loads(path.read_text(encoding="utf-8")))
+    return list(out)
+
+
+class LocalizationTests(unittest.TestCase):
+    """Английский — язык по умолчанию; русский включается в настройках. Перевод — на лету при отрисовке текста."""
+    # Название языка и подпись переключателя намеренно остаются на двух языках
+    UNTRANSLATED = {"Русский", "Language / Язык: {}"}
+
+    def setUp(self):
+        from game import i18n
+        self.i18n = i18n
+        self.t = i18n.Translator(i18n._load_table(), "en")
+
+    def test_english_is_the_default_language(self):
+        self.assertEqual(self.i18n.DEFAULT_LANGUAGE, "en")
+        self.assertEqual(self.i18n.get_language(), "en")
+        self.assertEqual(self.i18n.sanitize_language("xx"), "en")
+        self.assertEqual(self.i18n.sanitize_language(None), "en")
+        self.assertEqual(DEFAULT_SAVE["settings"]["language"], "en")
+        self.assertEqual(self.i18n.next_language("en"), "ru")
+        self.assertEqual(self.i18n.next_language("ru"), "en")
+
+    def test_every_player_visible_string_is_translated(self):
+        strings = [s for s in _player_visible_strings() if s not in self.UNTRANSLATED]
+        self.assertGreater(len(strings), 500)
+        missing = self.t.missing(strings)
+        self.assertEqual(missing, [], f"не переведено строк: {len(missing)}, например {missing[:5]}")
+
+    def test_russian_mode_returns_text_unchanged(self):
+        ru = self.i18n.Translator(self.i18n._load_table(), "ru")
+        for s in ("Новая игра", "Комнат пройдено: 3", "Бестиарий"):
+            self.assertEqual(ru(s), s)
+
+    def test_table_is_consistent(self):
+        table = self.i18n._load_table()
+        self.assertGreater(len(table), 500)
+        for ru, en in table.items():
+            self.assertTrue(en.strip(), ru)
+            self.assertEqual(ru.count("{}"), en.count("{}"), f"разное число «{{}}»: {ru!r}")
+
+    def test_patterns_phrases_and_nesting(self):
+        t = self.t
+        self.assertEqual(t("Комнат пройдено: 7"), "Rooms cleared: 7")
+        self.assertEqual(t("ЛЕСНИК ПОВЕРЖЕН"), "LUMBERJACK DEFEATED")                   # часть в «{}» переводится отдельно
+        self.assertEqual(t("Новое свидетельство: Пёс в кустах"), "New testimony: Dog in the Bushes")   # склеенная строка
+        self.assertEqual(t("Локация: ЛЕС (сразу бой)"), "Location: FOREST (instant fight)")
+        self.assertEqual(t("> Новая игра <"), "> New Game <")
+        self.assertEqual(t("Hello"), "Hello")                                           # без кириллицы — как есть
+        self.assertEqual(t("Незнакомая фраза"), "Незнакомая фраза")                    # неизвестное не ломается
+        self.assertEqual(t(""), "")
+
+    def test_phrase_boundaries_do_not_cut_words(self):
+        t = self.i18n.Translator({"Роб": "Rob", "Сосед": "Neighbor"}, "en")
+        self.assertEqual(t("Робот"), "Робот")          # «Роб» внутри слова не заменяется
+        self.assertEqual(t("Соседи"), "Соседи")
+        self.assertEqual(t("Это Роб и Сосед"), "Это Rob и Neighbor")
+
+    def test_cache_and_language_switch(self):
+        t = self.i18n.Translator({"Привет": "Hello"}, "en")
+        self.assertEqual(t("Привет"), "Hello")
+        t.set_language("ru")
+        self.assertEqual(t("Привет"), "Привет")
+        t.set_language("en")
+        self.assertEqual(t("Привет"), "Hello")
+        t.set_table({"Привет": "Hi"})
+        self.assertEqual(t("Привет"), "Hi")
+
+    def test_ending_texts_have_translation(self):
+        for key in ("«Баланс»", "НЕТ!"):
+            self.assertTrue(any(key in k for k in self.i18n._load_table()), key)
+
+    @unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+    def test_credits_thank_retro_mega11(self):
+        from game.states import CREDITS_LINES
+        self.assertIn("Спасибо за идею", CREDITS_LINES)
+        self.assertIn("Retro_MEGA11 — за бестиарий", CREDITS_LINES)
+        i = CREDITS_LINES.index("Спасибо за идею")
+        self.assertEqual(CREDITS_LINES[i + 1], "Retro_MEGA11 — за бестиарий")
+        self.assertEqual(self.t("Спасибо за идею"), "Thanks for the idea")
+        self.assertEqual(self.t("Retro_MEGA11 — за бестиарий"), "Retro_MEGA11 — for the bestiary")
+
+
+class AdaptiveQualityTests(unittest.TestCase):
+    def test_drops_after_sustained_slowness_only(self):
+        from game.systems.quality import AdaptiveQuality, HIGH, MEDIUM, LOW
+        q = AdaptiveQuality()
+        q.update(0.25)                                   # одиночный скачок (загрузка комнаты) качество не трогает
+        for _ in range(120):
+            q.update(1 / 60)
+        self.assertEqual(q.level, HIGH)
+        levels, frames = [HIGH], 0
+        for frames in range(1, 600):                     # устойчиво ~25 кадров/с: уровни снижаются по одному
+            q.update(0.04)
+            if q.level != levels[-1]:
+                levels.append(q.level)
+        self.assertEqual(levels, [HIGH, MEDIUM, LOW])    # не перепрыгивает через уровень и ниже нуля не падает
+        self.assertEqual(q.level, LOW)
+
+    def test_recovers_when_fast_again(self):
+        from game.systems.quality import AdaptiveQuality, HIGH, LOW
+        q = AdaptiveQuality()
+        for _ in range(900):
+            q.update(0.05)
+        self.assertEqual(q.level, LOW)
+        for _ in range(60 * 30):
+            q.update(1 / 60)
+        self.assertEqual(q.level, HIGH)
+
+    def test_manual_modes_are_fixed(self):
+        from game.systems.quality import AdaptiveQuality, HIGH, LOW
+        q = AdaptiveQuality()
+        for _ in range(900):
+            q.update(0.05)
+        self.assertEqual(q.effective("high"), HIGH)
+        self.assertEqual(q.effective("low"), LOW)
+        self.assertEqual(q.effective("auto"), q.level)
+
+    def test_setting_is_saved_and_sanitized(self):
+        from game.graphics_settings import sanitize, cycle
+        self.assertEqual(sanitize({})["effects_quality"], "auto")
+        self.assertEqual(sanitize({"effects_quality": "ultra"})["effects_quality"], "auto")
+        cfg = sanitize({"effects_quality": "high"})
+        self.assertEqual(cfg["effects_quality"], "high")
+        seen = []
+        for _ in range(3):
+            cycle(cfg, "effects_quality")
+            seen.append(cfg["effects_quality"])
+        self.assertEqual(sorted(seen), ["auto", "high", "low"])
+
+
+class BestiarySaveTests(unittest.TestCase):
+    def test_new_save_fields(self):
+        self.assertEqual(DEFAULT_SAVE["defeated"], [])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "save.json"
+            path.write_text(json.dumps({"runs": 3, "settings": {"volume": 0.2}}), encoding="utf-8")
+            data = SaveSystem(path).data
+            self.assertEqual(data["defeated"], [])
+            self.assertEqual(data["settings"]["language"], "en")      # старое сохранение без языка — английский
+            self.assertEqual(data["settings"]["volume"], 0.2)
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class BestiaryTests(unittest.TestCase):
+    def setUp(self):
+        from game.entities.enemy import load_enemy_defs
+        self.db = ItemDatabase.from_file()
+        self.enemies = load_enemy_defs()
+
+    def build(self, **save):
+        from game.bestiary import build_entries
+        data = {"defeated": [], "seen_items": [], "boss_kills": {}}
+        data.update(save)
+        return dict(build_entries(self.db, self.enemies, data)), data
+
+    def test_structure_and_counts(self):
+        cats, _ = self.build()
+        self.assertEqual(list(cats), ["Боссы", "Мини-боссы", "Мобы", "Предметы"])
+        self.assertEqual([e["id"] for e in cats["Боссы"]],
+                         ["boss:lumberjack", "boss:neighbor", "boss:mayor", "boss:chaos", "boss:shine", "boss:imp", "boss:god"])
+        self.assertEqual({e["id"] for e in cats["Мини-боссы"]}, {"living_spruce", "landlord", "tank", "gate_keeper"})
+        self.assertEqual(len(cats["Мобы"]), len(self.enemies))
+        self.assertEqual(len(cats["Предметы"]), len(self.db.items))
+        self.assertFalse(any(e["found"] for group in cats.values() for e in group))     # новая игра: всё закрыто
+
+    def test_entries_unlock_by_defeating_or_finding(self):
+        cats, _ = self.build(defeated=["crow", "boss:mayor", "tank"], seen_items=["broom"])
+        found = {e["id"] for group in cats.values() for e in group if e["found"]}
+        self.assertEqual(found, {"crow", "boss:mayor", "tank", "broom"})
+
+    def test_boss_and_mob_with_same_id_do_not_unlock_each_other(self):
+        self.assertIn("neighbor", self.enemies)                  # обычный моб «Сосед» и босс Сосед — разные записи
+        cats, _ = self.build(defeated=["neighbor"])
+        self.assertTrue(next(e for e in cats["Мобы"] if e["id"] == "neighbor")["found"])
+        self.assertFalse(next(e for e in cats["Боссы"] if e["id"] == "boss:neighbor")["found"])
+
+    def test_old_saves_unlock_bosses_from_kill_counter(self):
+        cats, _ = self.build(boss_kills={"lumberjack": 3, "mayor": 0})
+        bosses = {e["id"]: e["found"] for e in cats["Боссы"]}
+        self.assertTrue(bosses["boss:lumberjack"])
+        self.assertFalse(bosses["boss:mayor"])
+
+    def test_item_combo_hides_unknown_partner(self):
+        cats, _ = self.build(seen_items=["broom"])
+        broom = next(e for e in cats["Предметы"] if e["id"] == "broom")
+        self.assertIn("Комбо", broom["desc"])
+        self.assertIn("???", broom["desc"])                      # напарник ещё не найден
+        cats, _ = self.build(seen_items=["broom", "radioactive_burger"])
+        broom = next(e for e in cats["Предметы"] if e["id"] == "broom")
+        self.assertNotIn("???", broom["desc"])
+
+    def test_boss_entries_have_stats_and_lore(self):
+        cats, _ = self.build()
+        god = next(e for e in cats["Боссы"] if e["id"] == "boss:god")
+        self.assertIn(("Здоровье", "10000"), god["stats"])
+        self.assertTrue(god["desc"])
+        self.assertEqual(god["zone"], ZONES["heaven"]["name"])
+        mb = {e["id"]: e for e in cats["Мини-боссы"]}
+        self.assertEqual(mb["landlord"]["zone"], ZONES["suburbs"]["name"])
+        self.assertTrue(any(label == "Награда" for label, _ in mb["tank"]["stats"]))
+
+    def test_totals(self):
+        from game.bestiary import totals, build_entries
+        data = {"defeated": ["crow"], "seen_items": ["broom"], "boss_kills": {}}
+        cats = build_entries(self.db, self.enemies, data)
+        done, total = totals(cats)
+        self.assertEqual(done, 2)
+        self.assertEqual(total, 7 + 4 + len(self.enemies) + len(self.db.items))
+
+    def test_all_bestiary_text_is_translatable(self):
+        from game import i18n
+        t = i18n.Translator(i18n._load_table(), "en")
+        cats, _ = self.build(defeated=list(self.enemies), seen_items=list(self.db.items))
+        texts = []
+        for group in cats.values():
+            for e in group:
+                texts += [e["name"], e["desc"], e["zone"]] + [x for pair in e["stats"] for x in pair]
+        self.assertEqual(t.missing([x for x in texts if x]), [])
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class LightingOptimizationTests(unittest.TestCase):
+    def setUp(self):
+        import pygame
+        from game.lighting import Lighting
+        self.pg = pygame
+        self.light = Lighting()
+
+    def test_sun_shafts_are_redrawn_only_when_sun_moves(self):
+        from unittest import mock
+        surf = self.pg.Surface((480, 270))
+        state = SimpleNamespace(elevation=0.9, sun_dx=0.10)
+        with mock.patch.object(self.pg.draw, "line") as line:
+            self.light._sun_glare(surf, state)
+            first = line.call_count
+            self.assertEqual(first, 4)                           # четыре луча нарисованы один раз
+            self.light._sun_glare(surf, state)
+            self.light._sun_glare(surf, state)
+            self.assertEqual(line.call_count, first)             # кадры с тем же солнцем берут готовые лучи
+            state.sun_dx = 0.60
+            self.light._sun_glare(surf, state)
+            self.assertEqual(line.call_count, first + 4)         # солнце заметно сдвинулось — пересчёт
+
+    def test_low_quality_skips_rays_and_flares(self):
+        from unittest import mock
+        surf = self.pg.Surface((480, 270))
+        state = SimpleNamespace(elevation=0.9, sun_dx=0.10)
+        self.light.quality = 1
+        with mock.patch.object(self.pg.draw, "line") as line:
+            self.light._sun_glare(surf, state)
+            self.assertEqual(line.call_count, 0)
+
+    def test_cache_trim_drops_oldest_one_by_one(self):
+        from game.lighting import _trim
+        cache = {i: i for i in range(10)}
+        _trim(cache, 6)
+        self.assertEqual(list(cache), [4, 5, 6, 7, 8, 9])        # раньше кэш сбрасывался целиком
+
+    def test_shadows_touch_only_their_bounding_rectangle(self):
+        from game.daycycle import effective_state
+        from game.graphics_settings import sanitize
+        pg = self.pg
+        calls = []
+
+        class Recording(pg.Surface):
+            def fill(self, *a, **k):
+                calls.append(("fill", a))
+                return super().fill(*a, **k)
+
+            def blit(self, *a, **k):
+                calls.append(("blit", a))
+                return super().blit(*a, **k)
+
+        self.light._shadow_layer = Recording((480, 270), pg.SRCALPHA)
+        state = effective_state(ZONES["forest"], 100.0, 480.0, "day")
+        self.light.draw_shadows(Recording((480, 270)), pg.Vector2(0, 0), [(240, 140, 12, 16)], state, sanitize({}))
+        area = next(a for kind, a in calls if kind == "fill")[1]
+        self.assertLess(area.width * area.height, 480 * 270 // 4)   # не весь кадр
+        blit_area = next(a for kind, a in calls if kind == "blit")[2]
+        self.assertEqual((blit_area.width, blit_area.height), (area.width, area.height))
+
+    def test_shadow_rectangle_covers_the_whole_projected_shadow(self):
+        """Прямоугольник очистки не должен обрезать тень при любом положении солнца (в том числе вверх и влево)."""
+        from game.daycycle import day_state, shadow_params
+        pg = self.pg
+        from game.graphics_settings import sanitize
+        for t in (0.02, 0.1, 0.2, 0.3, 0.4, 0.45):
+            state = day_state(t)
+            dx, dy, length, strength = shadow_params(state)
+            if strength <= 0:
+                continue
+            surf = pg.Surface((480, 270))
+            surf.fill((200, 200, 200))
+            self.light.draw_shadows(surf, pg.Vector2(0, 0), [(240, 135, 14, 16)], state, sanitize({}))
+            tip = (240 + dx * 16 * length * 0.9, 135 + dy * 16 * length * 0.55 * 0.9)   # точка у конца проекции
+            if abs(tip[0] - 240) > 3 or abs(tip[1] - 135) > 3:
+                self.assertLess(surf.get_at((int(tip[0]), int(tip[1])))[0], 200, f"t={t}")
+
+
 if __name__ == "__main__":
     unittest.main()
