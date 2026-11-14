@@ -128,6 +128,20 @@ def _hero_frames(cid):
     return idle, walk
 
 
+# --- совместимость: прежние публичные функции (их вызывают тесты и сторонний код) ---
+def make_player_sprite(char_id, scale=1.0):
+    """Кадр стойки героя. Масштаб Тома (1.5) теперь заложен в рисунок, параметр scale оставлен для совместимости."""
+    return _hero_frames(char_id)[0].to_surface()
+
+
+def make_shine(variant=1):
+    return B.shine(0, variant).outlined().to_surface()
+
+
+def make_imp_boss(variant=1):
+    return B.imp_boss(0, variant).outlined().to_surface()
+
+
 class SpriteBook:
     """Кэш всех спрайтов; создаётся после инициализации дисплея."""
 
