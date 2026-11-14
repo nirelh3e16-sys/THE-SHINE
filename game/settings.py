@@ -11,6 +11,7 @@ ROOT = APP_ROOT
 DATA_DIR = RES_ROOT / "data"
 SAVE_DIR = APP_ROOT / "saves"
 ASSET_DIR = RES_ROOT / "assets"
+SPR_DIR = RES_ROOT / "spr"   # логотип и фон меню (logo_big.png, bg.png)
 CONFIG_PATH = APP_ROOT / "config.json" if (APP_ROOT / "config.json").is_file() else RES_ROOT / "config.json"
 MUSIC_DIRS = (APP_ROOT / "mus", RES_ROOT / "mus")  # внешняя папка mus рядом с игрой важнее упакованной
 ICON_PATHS = (APP_ROOT / "icon.ico", RES_ROOT / "icon.ico", RES_ROOT / "assets" / "icon.ico")

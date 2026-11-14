@@ -248,10 +248,8 @@ class God(Enemy):
         if closed:
             pygame.draw.line(surf, (232, 190, 90), (cx - 16, cy), (cx + 16, cy), 3)
         else:
-            iris = IRIS[self.phase]
-            pygame.draw.circle(surf, iris, (cx + int(self.pupil.x * 4), cy + int(self.pupil.y * 4)), 10)
-            pygame.draw.circle(surf, (20, 10, 30), (cx + int(self.pupil.x * 6), cy + int(self.pupil.y * 6)), 5)
-            pygame.draw.circle(surf, (255, 255, 255), (cx + int(self.pupil.x * 6) - 2, cy + int(self.pupil.y * 6) - 2), 1)
+            from ..sprites import draw_iris
+            draw_iris(surf, cx, cy, int(self.pupil.x * 4), int(self.pupil.y * 4), IRIS[self.phase])
         if self.state == "wind_gaze" and blink:    # линия взгляда: куда прилетит очередь
             end = self.pos + self.aim * 320
             pygame.draw.line(surf, (255, 60, 60), (cx, cy), (end.x + off.x, end.y + off.y), 2)

@@ -1106,12 +1106,9 @@ class Shine(Enemy):
             surf.blit(ghost, ghost.get_rect(center=(cx - int(self.dodge_vec.x * 14), cy - int(self.dodge_vec.y * 14))))
         surf.blit(img, img.get_rect(center=(cx, cy)))
         # радужка и зрачок большого глаза следят за игроком; цвет зависит от фазы
-        from ..sprites import SHINE_IRIS
+        from ..sprites import SHINE_IRIS, draw_iris
         ex, ey = cx + 1, cy + 4
-        iris = SHINE_IRIS[self.phase]
-        pygame.draw.circle(surf, iris, (ex + int(self.pupil.x * 4), ey + int(self.pupil.y * 4)), 10)
-        pygame.draw.circle(surf, (20, 10, 30), (ex + int(self.pupil.x * 6), ey + int(self.pupil.y * 6)), 5)
-        pygame.draw.circle(surf, (255, 255, 255), (ex + int(self.pupil.x * 6) - 2, ey + int(self.pupil.y * 6) - 2), 1)
+        draw_iris(surf, ex, ey, int(self.pupil.x * 4), int(self.pupil.y * 4), SHINE_IRIS[self.phase])
         if self.state == "wind_charge" and blink:
             end = self.pos + self.aim * 300
             pygame.draw.line(surf, (255, 60, 60), (cx, cy), (end.x + off.x, end.y + off.y), 2)
@@ -1375,12 +1372,9 @@ class Imp(Enemy):
             return
         surf.blit(img, img.get_rect(center=(cx, cy)))
         # радужка и зрачок-щель большого глаза следят за игроком
-        from ..sprites import IMP_IRIS
+        from ..sprites import IMP_IRIS, draw_iris
         ex, ey = cx + 1, cy + 4
-        ox, oy = int(self.pupil.x * 4), int(self.pupil.y * 4)
-        pygame.draw.circle(surf, IMP_IRIS[self.phase], (ex + ox, ey + oy), 10)
-        pygame.draw.ellipse(surf, (25, 6, 6), (ex + int(ox * 1.5) - 2, ey + int(oy * 1.5) - 7, 4, 14))
-        pygame.draw.circle(surf, (255, 240, 200), (ex + ox - 3, ey + oy - 4), 1)
+        draw_iris(surf, ex, ey, int(self.pupil.x * 4), int(self.pupil.y * 4), IMP_IRIS[self.phase], "slit")
         if self.state == "wind_swoop" and blink:
             end = self.pos + self.aim * 320
             pygame.draw.line(surf, (255, 60, 60), (cx, cy), (end.x + off.x, end.y + off.y), 2)

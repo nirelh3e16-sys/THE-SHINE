@@ -10,6 +10,7 @@ from ..entities.enemy import Enemy
 from ..entities.miniboss import MINIBOSSES, create_miniboss
 from ..settings import ROOM_X, ROOM_Y, ROOM_W, ROOM_H, DOOR_HALF
 from .dungeon import DIRS
+from . import tiles
 
 INTERIOR = pygame.Rect(ROOM_X, ROOM_Y, ROOM_W, ROOM_H)
 CENTER = pygame.Vector2(INTERIOR.centerx, INTERIOR.centery)
@@ -367,7 +368,8 @@ class Room:
         a = self.arena
         for ty in range(a.top, a.bottom, 16):
             for tx in range(a.left, a.right, 16):
-                bg.fill(self.zone["floor"][((tx // 16) + (ty // 16)) % 2], (tx, ty, min(16, a.right - tx), min(16, a.bottom - ty)))
+                tile = tiles.floor("hell", self.zone["floor"][((tx // 16) + (ty // 16)) % 2], tx // 16 * 3 + ty // 16 * 5)
+                bg.blit(tile, (tx, ty), pygame.Rect(0, 0, min(16, a.right - tx), min(16, a.bottom - ty)))
         for x in range(a.left + 8, a.right - 8, 40):   # жилы лавы в базальте
             pygame.draw.line(bg, (255, 120, 30), (x, a.top + 6), (x + 10, a.top + 14), 1)
             pygame.draw.line(bg, (255, 120, 30), (x + 18, a.bottom - 6), (x + 8, a.bottom - 14), 1)
@@ -412,15 +414,13 @@ class Room:
         for ty in range(INTERIOR.top, INTERIOR.bottom, 16):
             for tx in range(INTERIOR.left, INTERIOR.right, 16):
                 pair = self.zone["floor"]
-                bg.fill(pair[((tx // 16) + (ty // 16)) % 2], (tx, ty, 16, 16))
+                bg.blit(tiles.floor("heaven", pair[((tx // 16) + (ty // 16)) % 2], tx // 16 * 3 + ty // 16 * 5), (tx, ty))
         for _ in range(18):    # лёгкие завитки на облаке
             x, y = rng.randrange(INTERIOR.left + 6, INTERIOR.right - 20), rng.randrange(INTERIOR.top + 6, INTERIOR.bottom - 6)
             pygame.draw.line(bg, (220, 232, 248), (x, y), (x + rng.randrange(6, 16), y), 1)
         for d in self.spec.doors:   # двери — проёмы в золотом ободке
             r = self._door_rect(d)
-            bg.fill((255, 252, 240), r)
-            pygame.draw.rect(bg, (255, 200, 70), r.inflate(4, 4), 2)
-            pygame.draw.rect(bg, (255, 236, 150), r.inflate(-2, -2), 1)
+            bg.blit(tiles.door(r.w, r.h, "v" if DIRS[d][0] else "h", False, (255, 238, 170), sky=True), r.topleft)
         return bg
 
     def _build_bg(self):
@@ -430,49 +430,56 @@ class Room:
             return self._build_sky_bg()
         zone = self.zone
         bg = pygame.Surface((480, 270))
-        bg.fill(zone["wall"])
+        zid = zone.get("id", "forest")
+        decor = zone.get("wall_decor", "trees")
+        wall_t = tiles.wall(decor, zone["wall"])
+        for ty in range(0, 270, 16):          # стены: плитки с текстурой (деревья, забор, обои, кирпич с лавой)
+            for tx in range(0, 480, 16):
+                bg.blit(wall_t, (tx, ty))
+        patch_kind = {(92, 176, 88): "forest", (104, 106, 120): "city", (178, 132, 92): "house",
+                      (60, 220, 190): "center", (230, 70, 190): "center"}
         for ty in range(INTERIOR.top, INTERIOR.bottom, 16):
             for tx in range(INTERIOR.left, INTERIOR.right, 16):
-                pair = zone["floor"]
+                pair, kind = zone["floor"], zid
                 if self._patch:
                     pair = self._patch[(1 if tx >= CENTER.x else 0) + (2 if ty >= CENTER.y else 0)]
-                bg.fill(pair[((tx // 16) + (ty // 16)) % 2], (tx, ty, 16, 16))
+                    kind = patch_kind.get(tuple(pair[0]), "forest")
+                bg.blit(tiles.floor(kind, pair[((tx // 16) + (ty // 16)) % 2], tx // 16 * 3 + ty // 16 * 5), (tx, ty))
         for x, y, c in self._decor:
-            bg.fill(c, (x, y, 2, 2))
-        if zone.get("road"):  # дорога поперёк комнаты с разметкой
-            pygame.draw.rect(bg, (84, 84, 98), (ROOM_X, int(CENTER.y) - 22, ROOM_W, 44))
+            if zid in ("forest", "suburbs"):   # цветочки на траве
+                bg.fill(c, (x, y, 2, 2))
+        if zone.get("road"):  # дорога поперёк комнаты: асфальт, бордюры и разметка
+            ry = int(CENTER.y) - 22
+            for tx in range(ROOM_X, ROOM_X + ROOM_W, 16):
+                for ty in range(ry, ry + 44, 16):
+                    bg.blit(tiles.floor("city", (86, 86, 100), tx // 16 + ty // 16 * 3), (tx, ty), pygame.Rect(0, 0, min(16, ROOM_X + ROOM_W - tx), min(16, ry + 44 - ty)))
+            bg.fill((150, 150, 166), (ROOM_X, ry, ROOM_W, 2))
+            bg.fill((50, 48, 62), (ROOM_X, ry + 2, ROOM_W, 1))
+            bg.fill((150, 150, 166), (ROOM_X, ry + 42, ROOM_W, 2))
+            bg.fill((50, 48, 62), (ROOM_X, ry + 41, ROOM_W, 1))
             for x in range(ROOM_X + 6, ROOM_X + ROOM_W, 28):
-                bg.fill((240, 210, 80), (x, int(CENTER.y) - 1, 14, 3))
+                bg.fill((70, 62, 40), (x, int(CENTER.y), 14, 3))
+                bg.fill((244, 214, 84), (x, int(CENTER.y) - 1, 14, 2))
         if zone.get("road_v"):  # вертикальная дорога
-            pygame.draw.rect(bg, (70, 60, 100), (int(CENTER.x) - 22, ROOM_Y, 44, ROOM_H))
+            rx = int(CENTER.x) - 22
+            for tx in range(rx, rx + 44, 16):
+                for ty in range(ROOM_Y, ROOM_Y + ROOM_H, 16):
+                    bg.blit(tiles.floor("center", (70, 60, 100), tx // 16 * 3 + ty // 16), (tx, ty), pygame.Rect(0, 0, min(16, rx + 44 - tx), min(16, ROOM_Y + ROOM_H - ty)))
+            bg.fill((255, 120, 220), (rx, ROOM_Y, 2, ROOM_H))
+            bg.fill((255, 120, 220), (rx + 42, ROOM_Y, 2, ROOM_H))
             for y in range(ROOM_Y + 6, ROOM_Y + ROOM_H, 28):
                 bg.fill((255, 120, 220), (int(CENTER.x) - 1, y, 3, 14))
-        dark = tuple(max(0, v - 28) for v in zone["wall"])
-        light = tuple(min(255, v + 22) for v in zone["wall"])
-        decor = zone.get("wall_decor", "trees")
-        if decor == "acid":
-            dark, light = (255, 70, 200), (70, 255, 210)
-        if decor == "trees":
-            for x in range(0, 480, 12):  # кроны по краям
-                pygame.draw.circle(bg, dark, (x, 12), 9)
-                pygame.draw.circle(bg, dark, (x, 258), 9)
-            for y in range(0, 270, 12):
-                pygame.draw.circle(bg, dark, (10, y), 9)
-                pygame.draw.circle(bg, dark, (470, y), 9)
-        else:  # забор / обои: вертикальные планки
-            for x in range(0, 480, 8):
-                for y0, y1 in ((0, ROOM_Y), (ROOM_Y + ROOM_H, 270)):
-                    pygame.draw.line(bg, light if (x // 8) % 2 else dark, (x, y0), (x, y1 - 1))
-            for y in range(0, 270, 8):
-                for x0, x1 in ((0, ROOM_X), (ROOM_X + ROOM_W, 480)):
-                    pygame.draw.line(bg, light if (y // 8) % 2 else dark, (x0, y), (x1 - 1, y))
         if self._cracks:   # трещины в базальте
             for pts in self._cracks:
                 pygame.draw.lines(bg, (150, 55, 20), False, pts, 2)
                 pygame.draw.lines(bg, (255, 120, 30), False, pts, 1)
             for pts in self._veins:
                 pygame.draw.lines(bg, (255, 100, 25), False, pts, 1)
-        pygame.draw.rect(bg, (20, 14, 30), INTERIOR.inflate(2, 2), 1)
+        shade = pygame.Surface((480, 270), pygame.SRCALPHA)   # мягкая тень стены на пол, как в Rebirth
+        for i, a in enumerate((90, 54, 26, 10)):
+            pygame.draw.rect(shade, (24, 8, 20, a), INTERIOR.inflate(-2 * i, -2 * i), 1)
+        bg.blit(shade, (0, 0))
+        pygame.draw.rect(bg, (26, 13, 18), INTERIOR.inflate(2, 2), 1)
         for d in self.spec.doors:
             dx, dy = DIRS[d]
             c = self.door_center(d)
@@ -480,8 +487,7 @@ class Room:
                 r = pygame.Rect(INTERIOR.left - 24 if dx < 0 else INTERIOR.right, c.y - DOOR_HALF, 24, DOOR_HALF * 2)
             else:
                 r = pygame.Rect(c.x - DOOR_HALF, INTERIOR.top - 32 if dy < 0 else INTERIOR.bottom, DOOR_HALF * 2, 32 if dy < 0 else 30)
-            bg.fill((150, 120, 80), r)
-            pygame.draw.rect(bg, (20, 14, 30), r, 1)
+            bg.blit(tiles.door(r.w, r.h, "v" if dx else "h", False, zone["wall"]), r.topleft)
         return bg
 
     def draw_floor(self, surf, off):
@@ -497,8 +503,7 @@ class Room:
                 else:
                     r = pygame.Rect(c.x - DOOR_HALF, INTERIOR.top - 6 if dy < 0 else INTERIOR.bottom - 2, DOOR_HALF * 2, 8)
                 sky = self.zone.get("sky")   # на Небесах закрытая дверь — золотая решётка
-                pygame.draw.rect(surf, (255, 205, 80) if sky else (110, 70, 40), r.move(off.x, off.y))
-                pygame.draw.rect(surf, (255, 246, 200) if sky else (30, 20, 30), r.move(off.x, off.y), 1)
+                surf.blit(tiles.door(r.w, r.h, "v" if dx else "h", True, self.zone["wall"], sky=bool(sky)), (r.x + off.x, r.y + off.y))
 
     # --- динамика комнаты: гравитация и перестройка стен ---
     def begin_reshuffle(self, player_pos, want=None):
@@ -658,8 +663,7 @@ class Room:
             for tx in range(rect.left, rect.right, 16):
                 for ty in range(rect.top, rect.bottom, 16):
                     if stump:
-                        pygame.draw.rect(surf, (104, 64, 44), (tx + off.x, ty + off.y, 16, 16))
-                        pygame.draw.rect(surf, (34, 24, 48), (tx + off.x, ty + off.y, 16, 16), 1)
+                        surf.blit(tiles.stump(), (tx + off.x, ty + off.y))
                     else:
                         tile = sprites.get(MIXED_TILES[(tx // 16 + ty // 16) % 4]) if mixed else rock
                         surf.blit(tile, (tx + off.x, ty + off.y))

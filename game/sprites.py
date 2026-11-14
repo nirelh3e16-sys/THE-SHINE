@@ -1,966 +1,207 @@
-"""Пиксель-арт спрайты, нарисованные кодом (внешние ассеты не нужны)."""
-import math
+"""Спрайты в стиле The Binding of Isaac: Repentance+ (рисуются кодом, внешние ассеты не нужны).
+
+Все изображения строятся модулями game/art/*. Ходьба и анимации боссов — наборы кадров: SpriteBook.get(name)
+сам выбирает кадр по времени, поэтому код врагов и боссов менять не пришлось. Игрок передаёт state="idle"/"walk".
+"""
 import pygame
 
-K = (34, 24, 48)
-PAL = {
-    "k": K, "w": (255, 250, 240), "r": (230, 60, 70), "o": (255, 150, 50), "y": (255, 225, 80),
-    "g": (120, 215, 100), "G": (52, 150, 76), "b": (80, 140, 240), "p": (220, 120, 200),
-    "n": (150, 95, 60), "N": (104, 64, 44), "s": (255, 205, 170), "d": (120, 120, 140),
-    "l": (190, 230, 255), "c": (130, 240, 90),
-}
+from .art import humans as H, foes as F, bosses as B, world as W
+from .art.canvas import OUT, Canvas, dark, light
+from .art.bosses import SHINE_IRIS, IMP_IRIS
 
-PLAYER = [
-    "...kkkk...", "..knnnnk..", ".kssssssk.", ".kskssksk.", ".kssssssk.", "..kbbbbk..",
-    ".kbbbbbbk.", "ksbbbbbbsk", ".kbbbbbbk.", "..kbkkbk..", "..ksk.ksk.", "..kkk.kkk.",
-]
-BUSH = [
-    "...kkkkkk...", "..kGGGGGGk..", ".kGgGGgGGGGk", "kGGgGGGGgGGk", "kGwkGGGGwkGk", "kGgGGGGGGgGk",
-    "kGGGkkkkGGGk", ".kGgGGGGgGk.", "..kkGGGGkk..", "....kkkk....",
-]
-TREE = [
-    "....kkkkkk....", "..kkGGGGGGkk..", ".kGGgGGGGgGGk.", "kGGGGGGGGGGGGk", "kGgGGGGGGGGgGk",
-    ".kGGGGGGGGGGk.", "..kkGGGGGGkk..", "....kNNNNk....", "...kNwkNNkwNk.", "...kNNNNNNNNk.",
-    "...kNNkkkkNNk.", "...kNNNNNNNNk.", "....kNNNNNNk..", "...kkkkkkkkkk.",
-]
-BIRD = [
-    "............", "k....kk....k", "kk..kyyk..kk", "kyykkwkkyykk", "kyyyyyyyyyyk", ".kyyyoyyyyk.",
-    "..kkyyyykk..", "....kookk...", "....kkk.....",
-]
-ROCK = [
-    "................", "......kkkk......", "....kkddddkk....", "...kdddlldddk...", "..kdddlddddddk..",
-    "..kddddddddddk..", ".kdddddddddNdk..", ".kddddddddddNdk.", ".kdddddddddddNk.", ".kddddddddddNNk.",
-    "..kddddddddNNk..", "..kkdddddNNNkk..", "....kkkkkkkk....", "................", "................", "................",
-]
-SOLDIER = [
-    "..kkk..", ".kGGGk.", ".ksssk.", "..kGk..", ".kGGGk.", "kGGGGGk", ".kk.kk.",
-]
-
-
-def from_rows(rows, palette=PAL):
-    w = len(rows[0])
-    surf = pygame.Surface((w, len(rows)), pygame.SRCALPHA)
-    for y, row in enumerate(rows):
-        if len(row) != w:
-            raise ValueError(f"строки спрайта разной длины (строка {y})")
-        for x, ch in enumerate(row):
-            color = palette.get(ch)
-            if color:
-                surf.set_at((x, y), color)
-    return surf
-
-
-def outlined(surf, color=K):
-    """Добавляет 1px контур вокруг непрозрачных пикселей."""
-    mask = pygame.mask.from_surface(surf)
-    sil = mask.to_surface(setcolor=color, unsetcolor=(0, 0, 0, 0))
-    out = pygame.Surface((surf.get_width() + 2, surf.get_height() + 2), pygame.SRCALPHA)
-    for ox, oy in ((0, 1), (2, 1), (1, 0), (1, 2)):
-        out.blit(sil, (ox, oy))
-    out.blit(surf, (1, 1))
-    return out
+K = OUT
 
 
 def silhouette(surf, color=(255, 255, 255)):
     return pygame.mask.from_surface(surf).to_surface(setcolor=color, unsetcolor=(0, 0, 0, 0))
 
 
-def make_lumberjack():
-    s = pygame.Surface((40, 44), pygame.SRCALPHA)
-    pygame.draw.rect(s, (60, 70, 130), (12, 34, 6, 10))
-    pygame.draw.rect(s, (60, 70, 130), (22, 34, 6, 10))
-    pygame.draw.rect(s, (200, 50, 50), (8, 16, 24, 20))
-    for i in range(0, 24, 6):
-        pygame.draw.rect(s, (120, 30, 40), (8 + i, 16, 2, 20))
-    for j in range(0, 20, 6):
-        pygame.draw.rect(s, (120, 30, 40), (8, 16 + j, 24, 2))
-    pygame.draw.rect(s, (255, 205, 170), (13, 6, 14, 12))
-    pygame.draw.rect(s, (130, 80, 45), (12, 13, 16, 9))
-    pygame.draw.rect(s, (200, 50, 50), (11, 2, 18, 6))
-    pygame.draw.rect(s, (255, 255, 255), (15, 9, 3, 3))
-    pygame.draw.rect(s, (255, 255, 255), (22, 9, 3, 3))
-    pygame.draw.rect(s, (230, 20, 20), (16, 10, 1, 2))
-    pygame.draw.rect(s, (230, 20, 20), (23, 10, 1, 2))
-    pygame.draw.rect(s, (200, 50, 50), (2, 18, 6, 14))
-    pygame.draw.rect(s, (200, 50, 50), (32, 18, 6, 14))
-    pygame.draw.circle(s, (190, 195, 210), (36, 26), 8)
-    pygame.draw.circle(s, (110, 115, 135), (36, 26), 3)
-    for a in range(0, 360, 45):
-        x = 36 + math.cos(math.radians(a)) * 9
-        y = 26 + math.sin(math.radians(a)) * 9
-        pygame.draw.circle(s, (230, 235, 245), (int(x), int(y)), 1)
-    return outlined(s)
-
-
-def _surf(w, h):
-    return pygame.Surface((w, h), pygame.SRCALPHA)
-
-
-def make_player_sprite(char_id, scale=1.0):
-    """Спрайт героя: общая заготовка PLAYER с разными палитрами и деталями."""
-    pal = dict(PAL)
-    tweaks = {
-        "lumberjack": {"n": (190, 45, 45), "b": (205, 55, 55)},
-        "tom": {"b": (70, 150, 90), "n": (60, 40, 30)},
-        "bigshot": {"b": (40, 42, 62), "n": (30, 30, 40)},
-        "glitch": {"b": (60, 255, 220), "s": (255, 130, 230), "n": (255, 240, 90)},
-        "angel": {"b": (250, 250, 255), "n": (255, 222, 110)},
-        "devil": {"b": (120, 20, 30), "s": (215, 60, 55), "n": (20, 15, 20)},
-    }
-    if char_id == "soul":   # Душа не похожа на остальных: призрак без рук и ног
-        ghost = make_soul_player()
-        return ghost if scale == 1.0 else pygame.transform.scale(ghost, (int(ghost.get_width() * scale), int(ghost.get_height() * scale)))
-    pal.update(tweaks.get(char_id, {}))
-    base = from_rows(PLAYER, pal)
-    w, h = base.get_size()
-    if char_id == "lumberjack":
-        for y in range(5, 11):                       # клетчатая рубашка
-            for x in range(w):
-                if base.get_at((x, y))[:3] == pal["b"] and (x + y) % 3 == 0:
-                    base.set_at((x, y), (130, 30, 40))
-        for x in range(3, 7):                        # борода
-            base.set_at((x, 4), (110, 60, 30))
-    elif char_id == "devil":
-        for x, y in ((2, 0), (3, 0), (2, 1), (7, 0), (6, 0), (7, 1)):                    # рога
-            base.set_at((x, y), (255, 235, 180))
-        for y in range(6, 9):                                                            # золотой пояс
-            base.set_at((5, y), (255, 190, 50))
-    elif char_id == "bigshot":
-        for y in range(6, 9):                        # золотой галстук
-            base.set_at((5, y), (255, 215, 70))
-        for x in range(2, 8):                        # тёмные очки
-            base.set_at((x, 3), (10, 10, 14))
-    out = base
-    if char_id == "glitch":
-        out = pygame.Surface((w + 3, h), pygame.SRCALPHA)
-        out.blit(silhouette(base, (255, 70, 200)), (3, 0))
-        out.blit(base, (0, 0))
-        strip = base.subsurface((0, 5, w, 2)).copy()
-        out.blit(strip, (2, 5))
-    elif char_id == "angel":
-        out = pygame.Surface((w + 12, h + 6), pygame.SRCALPHA)
-        for side in (-1, 1):                         # крылья
-            cx = out.get_width() // 2
-            pygame.draw.polygon(out, (245, 245, 255), [(cx + side * 3, 9), (cx + side * 10, 3), (cx + side * 11, 11), (cx + side * 4, 14)])
-        out.blit(base, (6, 6))
-        pygame.draw.ellipse(out, (255, 215, 90), (out.get_width() // 2 - 4, 0, 8, 3), 1)   # нимб
-    sprite = outlined(out)
-    if scale != 1.0:
-        sprite = pygame.transform.scale(sprite, (int(sprite.get_width() * scale), int(sprite.get_height() * scale)))
-    return sprite
-
-
-def make_dog():
-    s, d = _surf(16, 12), pygame.draw
-    d.ellipse(s, (150, 110, 70), (2, 3, 10, 6))
-    d.rect(s, (150, 110, 70), (10, 2, 5, 5))
-    d.rect(s, (100, 70, 45), (14, 4, 2, 2))
-    d.rect(s, (100, 70, 45), (10, 1, 2, 2))
-    d.rect(s, (150, 110, 70), (3, 8, 2, 3))
-    d.rect(s, (150, 110, 70), (9, 8, 2, 3))
-    d.line(s, (150, 110, 70), (2, 4), (0, 2), 1)
-    s.set_at((12, 3), (130, 240, 90))
-    s.set_at((6, 5), (130, 240, 90))
-    return outlined(s)
-
-
-def make_mailman():
-    s, d = _surf(12, 16), pygame.draw
-    d.rect(s, (70, 100, 190), (3, 6, 6, 6))
-    d.rect(s, (60, 60, 90), (3, 12, 2, 3))
-    d.rect(s, (60, 60, 90), (7, 12, 2, 3))
-    d.rect(s, (255, 205, 170), (3, 2, 6, 4))
-    d.rect(s, (70, 100, 190), (2, 0, 8, 3))
-    d.rect(s, (230, 60, 70), (1, 7, 2, 5))
-    d.rect(s, (245, 240, 220), (8, 8, 4, 4))
-    s.set_at((4, 4), K)
-    s.set_at((7, 4), K)
-    return outlined(s)
-
-
-def make_sprinkler():
-    s, d = _surf(12, 12), pygame.draw
-    d.rect(s, (110, 110, 130), (3, 8, 6, 3))
-    d.circle(s, (80, 160, 235), (6, 6), 4)
-    d.rect(s, (200, 230, 255), (6, 1, 2, 4))
-    d.rect(s, (200, 230, 255), (1, 6, 4, 2))
-    s.set_at((6, 6), (255, 255, 255))
-    return outlined(s)
-
-
-def make_cart():
-    s, d = _surf(16, 14), pygame.draw
-    d.rect(s, (190, 195, 210), (2, 2, 12, 7), 1)
-    for x in range(4, 14, 3):
-        d.line(s, (190, 195, 210), (x, 2), (x, 8))
-    d.line(s, (190, 195, 210), (0, 1), (2, 2))
-    d.circle(s, (60, 60, 70), (4, 11), 2)
-    d.circle(s, (60, 60, 70), (12, 11), 2)
-    d.rect(s, (230, 60, 70), (4, 4, 3, 3))
-    return outlined(s)
-
-
-def make_neighbor():
-    s, d = _surf(12, 16), pygame.draw
-    d.rect(s, (230, 150, 70), (3, 6, 6, 6))
-    d.rect(s, (90, 90, 130), (3, 12, 2, 3))
-    d.rect(s, (90, 90, 130), (7, 12, 2, 3))
-    d.rect(s, (255, 205, 170), (3, 1, 6, 5))
-    d.rect(s, (130, 90, 60), (3, 0, 6, 2))
-    d.rect(s, (230, 20, 20), (4, 3, 1, 1))
-    d.rect(s, (230, 20, 20), (7, 3, 1, 1))
-    d.rect(s, (230, 150, 70), (1, 7, 2, 4))
-    d.rect(s, (230, 150, 70), (9, 7, 2, 4))
-    return outlined(s)
-
-
-def make_neighbor_boss():
-    s, d = _surf(44, 44), pygame.draw
-    d.rect(s, (80, 80, 120), (13, 33, 7, 10))
-    d.rect(s, (80, 80, 120), (23, 33, 7, 10))
-    d.rect(s, (235, 150, 70), (9, 15, 26, 20))
-    d.rect(s, (200, 110, 40), (9, 25, 26, 3))
-    d.rect(s, (255, 205, 170), (14, 3, 16, 14))
-    d.rect(s, (140, 95, 60), (13, 1, 18, 5))
-    d.rect(s, (255, 255, 255), (16, 8, 5, 4))
-    d.rect(s, (255, 255, 255), (24, 8, 5, 4))
-    d.rect(s, (230, 20, 20), (18, 9, 2, 2))
-    d.rect(s, (230, 20, 20), (26, 9, 2, 2))
-    d.rect(s, K, (18, 14, 8, 2))
-    d.rect(s, (235, 150, 70), (3, 17, 6, 14))
-    d.rect(s, (235, 150, 70), (35, 17, 6, 14))
-    d.rect(s, (210, 50, 50), (0, 30, 44, 10))      # газонокосилка перед ним
-    d.rect(s, (250, 220, 70), (4, 32, 14, 3))
-    d.circle(s, (50, 50, 60), (7, 41), 3)
-    d.circle(s, (50, 50, 60), (37, 41), 3)
-    d.line(s, (150, 150, 160), (22, 30), (22, 22), 2)
-    return outlined(s)
-
-
-def make_rat():
-    s, d = _surf(14, 8), pygame.draw
-    d.ellipse(s, (120, 120, 130), (2, 2, 9, 5))
-    d.polygon(s, (120, 120, 130), [(10, 2), (14, 4), (10, 6)])
-    d.line(s, (200, 150, 160), (2, 4), (0, 6), 1)
-    d.rect(s, (230, 170, 180), (7, 0, 2, 2))
-    s.set_at((11, 3), (130, 240, 90))
-    d.rect(s, (90, 90, 100), (3, 6, 2, 2))
-    d.rect(s, (90, 90, 100), (8, 6, 2, 2))
-    return outlined(s)
-
-
-def make_cop():
-    s, d = _surf(12, 16), pygame.draw
-    d.rect(s, (50, 70, 130), (3, 6, 6, 6))
-    d.rect(s, (40, 40, 70), (3, 12, 2, 3))
-    d.rect(s, (40, 40, 70), (7, 12, 2, 3))
-    d.rect(s, (150, 230, 120), (3, 2, 6, 4))      # мутировавшая зелёная кожа
-    d.rect(s, (30, 40, 90), (2, 0, 8, 3))
-    d.rect(s, (255, 215, 70), (5, 0, 2, 2))
-    d.rect(s, (230, 20, 20), (4, 3, 1, 1))
-    d.rect(s, (230, 20, 20), (7, 3, 1, 1))
-    d.rect(s, (60, 60, 70), (9, 7, 3, 2))
-    return outlined(s)
-
-
-def make_drone():
-    s, d = _surf(16, 10), pygame.draw
-    d.ellipse(s, (90, 100, 90), (4, 3, 8, 5))
-    d.line(s, (200, 200, 210), (0, 1), (6, 3), 1)
-    d.line(s, (200, 200, 210), (16, 1), (10, 3), 1)
-    d.rect(s, (255, 70, 70), (7, 5, 2, 2))
-    d.rect(s, (60, 70, 60), (6, 8, 4, 2))
-    return outlined(s)
-
-
-def make_car():
-    s, d = _surf(24, 14), pygame.draw
-    d.rect(s, (245, 200, 50), (1, 4, 22, 7), border_radius=2)
-    d.rect(s, (245, 200, 50), (6, 1, 12, 5), border_radius=2)
-    d.rect(s, (150, 210, 245), (8, 2, 8, 3))
-    d.rect(s, (255, 255, 255), (19, 5, 4, 3))
-    d.rect(s, (230, 20, 20), (20, 6, 2, 1))
-    for x in range(14, 22, 2):                    # зубы
-        d.rect(s, (255, 255, 255), (x, 9, 1, 2))
-    d.circle(s, (40, 40, 50), (6, 11), 3)
-    d.circle(s, (40, 40, 50), (18, 11), 3)
-    return outlined(s)
-
-
-def make_tvmon():
-    s, d = _surf(16, 16), pygame.draw
-    d.rect(s, (90, 90, 110), (1, 2, 14, 11))
-    for i, col in enumerate(((255, 80, 80), (255, 220, 70), (90, 220, 120), (90, 160, 255))):
-        d.rect(s, col, (3 + i * 3, 4, 3, 7))
-    d.rect(s, (255, 255, 255), (4, 6, 8, 2))
-    d.line(s, (200, 200, 210), (5, 2), (3, 0))
-    d.line(s, (200, 200, 210), (10, 2), (12, 0))
-    d.rect(s, (60, 60, 70), (4, 13, 3, 2))
-    d.rect(s, (60, 60, 70), (9, 13, 3, 2))
-    return outlined(s)
-
-
-def make_mayor():
-    s, d = _surf(46, 44), pygame.draw
-    d.rect(s, (60, 60, 90), (14, 12, 18, 18))                  # костюм
-    d.polygon(s, (230, 60, 70), [(22, 14), (25, 14), (26, 26), (23, 28)])
-    d.rect(s, (255, 205, 170), (16, 1, 14, 12))
-    d.rect(s, (150, 150, 160), (15, 0, 16, 4))
-    d.rect(s, K, (19, 6, 2, 2))
-    d.rect(s, K, (26, 6, 2, 2))
-    d.rect(s, K, (20, 10, 6, 1))
-    d.rect(s, (140, 90, 55), (2, 28, 42, 14))                  # стол
-    d.rect(s, (110, 70, 40), (2, 28, 42, 3))
-    d.rect(s, (245, 245, 235), (8, 25, 10, 5))                 # документ
-    d.line(s, (40, 40, 160), (9, 27), (16, 27))
-    return outlined(s)
-
-
-def make_mayor_desk():
-    s, d = _surf(52, 44), pygame.draw
-    d.rect(s, (130, 85, 50), (2, 8, 48, 26), border_radius=3)
-    d.rect(s, (100, 65, 38), (2, 8, 48, 4))
-    d.rect(s, (40, 10, 20), (8, 18, 36, 12))                  # пасть
-    for x in range(9, 43, 5):
-        d.polygon(s, (255, 255, 240), [(x, 18), (x + 4, 18), (x + 2, 23)])
-        d.polygon(s, (255, 255, 240), [(x, 30), (x + 4, 30), (x + 2, 25)])
-    d.circle(s, (255, 255, 255), (15, 12), 4)
-    d.circle(s, (255, 255, 255), (37, 12), 4)
-    d.circle(s, (230, 20, 20), (15, 12), 2)
-    d.circle(s, (230, 20, 20), (37, 12), 2)
-    for x in (6, 16, 34, 44):
-        d.rect(s, (100, 65, 38), (x, 34, 4, 9))
-    d.polygon(s, (230, 60, 70), [(24, 0), (28, 0), (30, 9), (22, 9)])   # галстук торчит сверху
-    return outlined(s)
-
-
-def make_mayor_surreal():
-    s, d = _surf(48, 48), pygame.draw
-    d.ellipse(s, (240, 200, 215), (6, 4, 36, 40))
-    d.ellipse(s, (150, 60, 190), (10, 8, 28, 32), 3)
-    for i, (ex, ey) in enumerate(((16, 14), (30, 14), (23, 22), (14, 30), (32, 30), (23, 38))):
-        d.circle(s, (255, 255, 255), (ex, ey), 4)
-        d.circle(s, (120, 30, 170), (ex, ey), 2)
-    d.polygon(s, (230, 60, 70), [(22, 0), (26, 0), (30, 12), (18, 12)])
-    d.arc(s, K, (14, 24, 20, 14), 3.4, 6.0, 2)
-    d.line(s, (255, 205, 170), (6, 24), (0, 14), 3)
-    d.line(s, (255, 205, 170), (42, 24), (47, 14), 3)
-    return outlined(s)
-
-
-def make_eye():
-    s, d = _surf(12, 12), pygame.draw
-    d.circle(s, (255, 255, 255), (6, 6), 5)
-    d.circle(s, (210, 20, 60), (6, 6), 3)
-    d.circle(s, K, (6, 6), 1)
-    d.line(s, (255, 120, 220), (1, 1), (3, 3))
-    d.line(s, (255, 120, 220), (11, 1), (9, 3))
-    return outlined(s)
-
-
-def make_fragment():
-    s, d = _surf(18, 20), pygame.draw
-    d.polygon(s, (150, 150, 165), [(2, 4), (14, 1), (17, 8), (15, 19), (1, 17)])
-    for x in (4, 9, 13):
-        for y in (5, 10, 15):
-            d.rect(s, (255, 235, 120) if (x + y) % 2 else (90, 200, 255), (x, y, 3, 3))
-    d.circle(s, (60, 170, 80), (14, 3), 3)                      # кусок дерева на обломке
-    d.rect(s, (230, 20, 60), (7, 7, 2, 2))
-    return outlined(s)
-
-
-def make_glitchling():
-    s, d = _surf(14, 16), pygame.draw
-    d.rect(s, (60, 255, 220), (3, 2, 8, 12))
-    d.rect(s, (255, 70, 210), (5, 4, 8, 12))
-    d.rect(s, (255, 255, 255), (5, 5, 2, 2))
-    d.rect(s, (255, 255, 255), (9, 5, 2, 2))
-    d.rect(s, K, (6, 9, 5, 1))
-    d.rect(s, (255, 240, 90), (0, 8, 5, 1))
-    d.rect(s, (255, 240, 90), (10, 12, 4, 1))
-    return outlined(s)
-
-
-def make_chaos():
-    s, d = _surf(64, 64), pygame.draw
-    d.polygon(s, (110, 110, 135), [(10, 40), (14, 8), (34, 4), (40, 30), (28, 46)])        # кусок здания
-    for x in range(15, 34, 7):
-        for y in range(10, 38, 8):
-            d.rect(s, (255, 235, 120) if (x + y) % 3 else (90, 200, 255), (x, y, 4, 5))
-    d.circle(s, (50, 160, 80), (44, 20), 14)                                                # крона дерева
-    d.circle(s, (80, 200, 100), (40, 16), 8)
-    d.rect(s, (110, 70, 45), (41, 28, 6, 22))
-    d.ellipse(s, (240, 200, 215), (22, 30, 30, 28))                                          # лицо
-    d.polygon(s, (230, 70, 190), [(4, 54), (20, 44), (24, 60), (8, 62)])
-    d.polygon(s, (60, 230, 200), [(46, 50), (62, 40), (60, 60), (50, 62)])
-    d.rect(s, (255, 235, 90), (30, 50, 16, 4))
-    d.line(s, (255, 70, 200), (0, 30), (20, 34), 3)
-    d.line(s, (60, 255, 210), (44, 60), (63, 46), 3)
-    return outlined(s)
-
-
-def _feather(surf, root, angle_deg, length, width, fill, edge):
-    """Одно перо крыла: вытянутый ромб от корня к кончику."""
-    ang = math.radians(angle_deg)
-    d = pygame.Vector2(math.cos(ang), math.sin(ang))
-    n = pygame.Vector2(-d.y, d.x)
-    r = pygame.Vector2(root)
-    pts = [r + n * (width * 0.3), r + d * (length * 0.55) + n * width, r + d * length, r + d * (length * 0.55) - n * width, r - n * (width * 0.3)]
-    pygame.draw.polygon(surf, fill, pts)
-    pygame.draw.polygon(surf, edge, pts, 1)
-
-
-# цвета радужки по фазам: рисуется динамически в Shine.draw (зрачок следит за игроком)
-SHINE_IRIS = {1: (80, 150, 255), 2: (235, 150, 40), 3: (195, 60, 225)}
-
-
-def make_shine(variant=1):
-    """THE SHINE — летающий глаз с крыльями и нимбом (без радужки: её рисует босс).
-    variant 1 — золотой, 2 — тёмное золото (судья), 3 — искажённый фиолетовый."""
-    w, h = 104, 84
-    s = _surf(w, h)
-    fill = {1: (255, 244, 205), 2: (232, 200, 120), 3: (196, 150, 205)}[variant]
-    edge = {1: (205, 155, 60), 2: (150, 100, 40), 3: (90, 40, 115)}[variant]
-    cx, cy = w // 2, 46
-    for side in (-1, 1):                                   # три яруса перьев с каждой стороны
-        base = 0 if side > 0 else 180
-        for tier, (ang, length, width) in enumerate(((-62, 40, 7), (-34, 46, 8), (-8, 48, 8), (20, 42, 7), (46, 32, 6))):
-            a = base + side * ang if side > 0 else 180 - ang
-            _feather(s, (cx + side * 12, cy), a, length, width, fill, edge)
-    pygame.draw.circle(s, (255, 255, 255), (cx, cy), 18)                      # глаз
-    pygame.draw.circle(s, edge, (cx, cy), 18, 2)
-    if variant == 3:                                                          # воспалённые жилки и трещины
-        for ang in (20, 80, 150, 210, 275, 330):
-            v = pygame.Vector2(math.cos(math.radians(ang)), math.sin(math.radians(ang)))
-            pygame.draw.line(s, (220, 40, 70), (cx + v.x * 18, cy + v.y * 18), (cx + v.x * 11, cy + v.y * 11), 1)
-        pygame.draw.line(s, (255, 70, 70), (cx - 30, cy - 18), (cx - 20, cy - 6), 1)
-        pygame.draw.line(s, (255, 70, 70), (cx + 34, cy + 10), (cx + 24, cy + 18), 1)
-    halo = (255, 220, 100) if variant < 3 else (160, 70, 200)
-    pygame.draw.ellipse(s, halo, (cx - 22, 6, 44, 13), 3)                    # нимб
-    pygame.draw.ellipse(s, (255, 255, 235) if variant < 3 else (220, 170, 240), (cx - 18, 9, 36, 7), 1)
-    return outlined(s)
-
-
-def make_basalt():
-    s, d = _surf(16, 16), pygame.draw
-    d.rect(s, (38, 32, 40), (0, 1, 16, 15), border_radius=3)
-    d.rect(s, (58, 50, 60), (2, 2, 7, 5), border_radius=2)
-    d.line(s, (255, 110, 30), (3, 9), (7, 12), 1)
-    d.line(s, (255, 170, 40), (7, 12), (12, 10), 1)
-    d.rect(s, K, (0, 1, 16, 15), 1, border_radius=3)
-    return s
-
-
-def make_hellhound():
-    s, d = _surf(16, 12), pygame.draw
-    d.ellipse(s, (60, 30, 30), (2, 3, 10, 6))
-    d.rect(s, (60, 30, 30), (10, 2, 5, 5))
-    d.polygon(s, (255, 110, 30), [(10, 2), (11, 0), (12, 2)])
-    d.rect(s, (60, 30, 30), (3, 8, 2, 3)); d.rect(s, (60, 30, 30), (9, 8, 2, 3))
-    d.line(s, (255, 140, 40), (2, 4), (0, 1), 1)
-    d.line(s, (255, 110, 30), (4, 4), (10, 4), 1)
-    s.set_at((12, 3), (255, 230, 90)); s.set_at((13, 3), (255, 230, 90))
-    return outlined(s)
-
-
-def make_fire_imp():
-    s, d = _surf(14, 16), pygame.draw
-    d.ellipse(s, (210, 55, 45), (3, 5, 8, 8))
-    d.circle(s, (230, 70, 55), (7, 5), 4)
-    d.polygon(s, (255, 230, 120), [(3, 3), (2, 0), (5, 2)]); d.polygon(s, (255, 230, 120), [(11, 3), (12, 0), (9, 2)])
-    d.rect(s, (255, 255, 220), (5, 4, 2, 2)); d.rect(s, (255, 255, 220), (8, 4, 2, 2))
-    d.polygon(s, (255, 160, 40), [(2, 8), (0, 5), (4, 7)]); d.polygon(s, (255, 160, 40), [(12, 8), (14, 5), (10, 7)])
-    d.line(s, (210, 55, 45), (7, 13), (11, 15), 1)
-    return outlined(s)
-
-
-def make_golem():
-    s, d = _surf(22, 22), pygame.draw
-    d.rect(s, (60, 50, 62), (3, 4, 16, 15), border_radius=3)
-    d.rect(s, (60, 50, 62), (6, 0, 10, 7), border_radius=2)
-    d.rect(s, (60, 50, 62), (0, 7, 5, 9)); d.rect(s, (60, 50, 62), (17, 7, 5, 9))
-    d.line(s, (255, 120, 30), (5, 8), (10, 13), 1); d.line(s, (255, 170, 40), (10, 13), (15, 10), 1)
-    d.line(s, (255, 120, 30), (8, 17), (14, 15), 1)
-    d.rect(s, (255, 220, 80), (8, 3, 2, 2)); d.rect(s, (255, 220, 80), (12, 3, 2, 2))
-    return outlined(s)
-
-
-def make_ember():
-    s, d = _surf(14, 16), pygame.draw
-    d.polygon(s, (255, 110, 30), [(7, 0), (12, 8), (10, 14), (4, 14), (2, 8)])
-    d.polygon(s, (255, 190, 50), [(7, 4), (10, 9), (8, 13), (5, 13), (4, 9)])
-    d.rect(s, (255, 255, 220), (5, 8, 2, 2)); d.rect(s, (255, 255, 220), (8, 8, 2, 2))
-    return outlined(s)
-
-
-def make_idol():
-    s, d = _surf(16, 20), pygame.draw
-    d.rect(s, (70, 62, 72), (3, 2, 10, 16), border_radius=2)
-    d.rect(s, (50, 44, 52), (1, 16, 14, 4))
-    d.rect(s, (255, 130, 30), (5, 6, 2, 3)); d.rect(s, (255, 130, 30), (9, 6, 2, 3))
-    d.rect(s, (255, 110, 30), (5, 12, 6, 2))
-    d.polygon(s, (255, 130, 30), [(8, 0), (10, 3), (6, 3)])
-    return outlined(s)
-
-
-# цвет радужки Беса по фазам (рисуется динамически в Imp.draw, зрачок-щель следит за игроком)
-IMP_IRIS = {1: (255, 150, 35), 2: (255, 95, 25), 3: (255, 50, 35)}
-
-
-def make_imp_boss(variant=1):
-    """Бес — летающий глаз с крыльями, как The Shine, но из базальта с жилками лавы.
-    Вместо нимба — дьявольские рога. variant 1/2/3 — всё сильнее раскалён."""
-    w, h = 104, 84
-    s = _surf(w, h)
-    rock = {1: (66, 56, 70), 2: (60, 50, 64), 3: (54, 44, 58)}[variant]       # базальт
-    rock_lt = {1: (92, 80, 96), 2: (96, 82, 98), 3: (100, 84, 100)}[variant]
-    lava = {1: (255, 120, 30), 2: (255, 150, 40), 3: (255, 190, 60)}[variant]
-    cx, cy = w // 2, 46
-    for side in (-1, 1):                                    # крылья: каменные перья с прожилками лавы
-        base = 0 if side > 0 else 180
-        for ang, length, width in ((-62, 40, 7), (-34, 46, 8), (-8, 48, 8), (20, 42, 7), (46, 32, 6)):
-            a_ = base + ang if side > 0 else 180 - ang
-            _feather(s, (cx + side * 12, cy), a_, length, width, rock, K)
-            v = pygame.Vector2(math.cos(math.radians(a_)), math.sin(math.radians(a_)))
-            root = pygame.Vector2(cx + side * 12, cy)
-            pygame.draw.line(s, lava, root + v * 6, root + v * (length * 0.8), 1)        # жилка лавы вдоль пера
-            pygame.draw.line(s, rock_lt, root + v * 4 + pygame.Vector2(-v.y, v.x) * 2, root + v * (length * 0.5) + pygame.Vector2(-v.y, v.x) * 2, 1)
-    pygame.draw.circle(s, rock, (cx, cy), 19)                                          # глаз: базальтовая оправа
-    pygame.draw.circle(s, lava, (cx, cy), 19, 2)
-    pygame.draw.circle(s, (255, 236, 190), (cx, cy), 15)                               # раскалённое «белое» глаза
-    for ang in range(0, 360, 45):                                                      # жилки лавы по оправе
-        vv = pygame.Vector2(math.cos(math.radians(ang)), math.sin(math.radians(ang)))
-        pygame.draw.line(s, lava, (cx + vv.x * 15, cy + vv.y * 15), (cx + vv.x * 21, cy + vv.y * 21), 1)
-    if variant >= 2:                                                                  # трещины лавы на крыльях
-        for sx in (-1, 1):
-            pygame.draw.lines(s, lava, False, [(cx + sx * 26, cy - 8), (cx + sx * 32, cy - 2), (cx + sx * 30, cy + 8)], 1)
-    if variant == 3:
-        for sx in (-1, 1):
-            pygame.draw.lines(s, (255, 235, 120), False, [(cx + sx * 36, cy - 14), (cx + sx * 40, cy - 4), (cx + sx * 36, cy + 4)], 1)
-    for side in (-1, 1):                                                               # дьявольские рога вместо нимба
-        pts = [(cx + side * 8, 20), (cx + side * 12, 10), (cx + side * 20, 4), (cx + side * 26, 6),
-               (cx + side * 20, 11), (cx + side * 16, 18), (cx + side * 12, 24)]
-        pygame.draw.polygon(s, (30, 22, 34), pts)
-        pygame.draw.polygon(s, rock_lt, pts, 1)
-        pygame.draw.line(s, lava, (cx + side * 10, 20), (cx + side * 18, 8), 1)        # жилка в роге
-        pygame.draw.circle(s, (255, 235, 150), (cx + side * 25, 6), 1)                  # раскалённый кончик
-    return outlined(s)
-
-
-def make_imp_mini():
-    s, d = _surf(14, 14), pygame.draw
-    d.circle(s, (220, 60, 50), (7, 8), 4)
-    d.polygon(s, (255, 230, 120), [(3, 5), (2, 1), (5, 4)]); d.polygon(s, (255, 230, 120), [(11, 5), (12, 1), (9, 4)])
-    d.polygon(s, (150, 30, 30), [(2, 8), (0, 4), (4, 7)]); d.polygon(s, (150, 30, 30), [(12, 8), (14, 4), (10, 7)])
-    d.rect(s, (255, 255, 210), (5, 7, 2, 2)); d.rect(s, (255, 255, 210), (8, 7, 2, 2))
-    return outlined(s)
-
-
-def make_barrier():
-    s, d = _surf(16, 16), pygame.draw
-    d.rect(s, (170, 170, 180), (0, 2, 16, 14))
-    for x in range(-8, 24, 8):
-        d.polygon(s, (240, 130, 40), [(x, 2), (x + 4, 2), (x + 12, 16), (x + 8, 16)])
-    d.rect(s, K, (0, 2, 16, 14), 1)
-    return s
-
-
-def make_hedge():
-    s, d = _surf(16, 16), pygame.draw
-    d.rect(s, (40, 130, 60), (0, 1, 16, 15), border_radius=4)
-    d.rect(s, (70, 170, 80), (2, 3, 6, 5), border_radius=2)
-    d.rect(s, (70, 170, 80), (9, 8, 5, 5), border_radius=2)
-    d.rect(s, K, (0, 1, 16, 15), 1, border_radius=4)
-    return s
-
-
-def make_crate():
-    s, d = _surf(16, 16), pygame.draw
-    d.rect(s, (170, 120, 70), (0, 0, 16, 16))
-    d.rect(s, (130, 85, 50), (0, 0, 16, 16), 2)
-    d.line(s, (130, 85, 50), (0, 0), (15, 15))
-    d.line(s, (130, 85, 50), (15, 0), (0, 15))
-    d.rect(s, K, (0, 0, 16, 16), 1)
-    return s
-
-
-def make_living_spruce():
-    """Живая ель: мини-босс Леса. Колючая ёлка с лицом."""
-    s, d = _surf(40, 46), pygame.draw
-    d.rect(s, (104, 64, 44), (17, 34, 7, 11))
-    d.rect(s, (150, 95, 60), (17, 34, 3, 11))
-    for pts, col in (([(20, 1), (9, 17), (31, 17)], (52, 150, 76)),
-                     ([(20, 8), (5, 27), (35, 27)], (44, 134, 68)),
-                     ([(20, 16), (2, 38), (38, 38)], (36, 118, 60))):
-        d.polygon(s, col, pts)
-        d.line(s, (120, 215, 100), pts[0], pts[1], 1)
-    d.rect(s, (255, 250, 240), (11, 25, 7, 5))      # глаза
-    d.rect(s, (255, 250, 240), (22, 25, 7, 5))
-    d.rect(s, (230, 40, 50), (14, 26, 3, 3))
-    d.rect(s, (230, 40, 50), (24, 26, 3, 3))
-    d.line(s, K, (10, 23), (17, 25), 2)             # злые брови
-    d.line(s, K, (30, 23), (23, 25), 2)
-    d.rect(s, K, (13, 32, 15, 4))                   # зубастый рот
-    for x in range(14, 27, 3):
-        d.rect(s, (255, 250, 240), (x, 32, 2, 2))
-    for x, y, dx, dy in ((9, 14, -4, -2), (31, 14, 4, -2), (6, 25, -5, -1), (34, 25, 5, -1), (4, 36, -5, 1), (36, 36, 5, 1),
-                         (20, 1, 0, -3), (13, 36, -2, 4), (27, 36, 2, 4)):   # иглы наружу
-        d.line(s, (235, 235, 160), (x, y), (x + dx, y + dy), 1)
-    return outlined(s)
-
-
-def make_landlord():
-    """Домовладелец: мини-босс дома в Пригороде. Злой мужчина в халате."""
-    s, d = _surf(22, 32), pygame.draw
-    d.rect(s, (90, 70, 60), (6, 28, 4, 3))           # тапки
-    d.rect(s, (90, 70, 60), (12, 28, 4, 3))
-    d.rect(s, (255, 205, 170), (7, 24, 3, 5))        # ноги
-    d.rect(s, (255, 205, 170), (12, 24, 3, 5))
-    d.rect(s, (150, 50, 62), (4, 12, 14, 14))        # халат
-    d.rect(s, (110, 30, 44), (4, 19, 14, 2))         # пояс
-    d.polygon(s, (235, 225, 210), [(9, 12), (13, 12), (11, 18)])   # майка в вырезе
-    d.rect(s, (150, 50, 62), (1, 13, 4, 9))          # руки
-    d.rect(s, (150, 50, 62), (17, 13, 4, 9))
-    d.rect(s, (255, 205, 170), (1, 21, 4, 3))
-    d.rect(s, (255, 205, 170), (17, 21, 4, 3))
-    d.rect(s, (255, 205, 170), (6, 2, 10, 11))       # голова
-    d.rect(s, (200, 200, 205), (5, 1, 12, 4))        # седые волосы
-    d.rect(s, (200, 200, 205), (4, 4, 2, 5))
-    d.rect(s, (200, 200, 205), (16, 4, 2, 5))
-    d.line(s, K, (7, 6), (10, 7), 1)                 # брови домиком
-    d.line(s, K, (15, 6), (12, 7), 1)
-    d.rect(s, K, (8, 8, 2, 2))
-    d.rect(s, K, (12, 8, 2, 2))
-    d.rect(s, (255, 80, 80), (9, 11, 4, 1))          # орущий рот
-    return outlined(s)
-
-
-def make_tank():
-    """Боевой танк: мини-босс Города (ствол рисуется отдельно и целится в игрока)."""
-    s, d = _surf(38, 26), pygame.draw
-    d.rect(s, (46, 48, 54), (1, 1, 36, 7), border_radius=3)     # гусеницы
-    d.rect(s, (46, 48, 54), (1, 18, 36, 7), border_radius=3)
-    for x in range(4, 35, 5):
-        d.line(s, (84, 86, 96), (x, 2), (x, 7), 1)
-        d.line(s, (84, 86, 96), (x, 19), (x, 24), 1)
-    d.rect(s, (86, 106, 74), (3, 6, 32, 14), border_radius=2)   # корпус
-    d.rect(s, (66, 84, 58), (3, 15, 32, 5))
-    d.circle(s, (108, 130, 92), (19, 13), 8)                    # башня
-    d.circle(s, (66, 84, 58), (19, 13), 8, 1)
-    d.circle(s, (150, 170, 130), (17, 11), 2)                   # люк
-    d.polygon(s, (230, 200, 70), [(31, 11), (32, 13), (34, 13), (32, 15), (33, 17), (31, 15), (29, 17), (30, 15), (28, 13), (30, 13)])
-    return outlined(s)
-
-
-def make_soul_player():
-    """Душа: белый призрак без рук и ног, глаза — чёрные пустые провалы."""
-    s, d = _surf(12, 20), pygame.draw
-    white, shade = (246, 248, 255), (212, 220, 240)
-    d.ellipse(s, white, (1, 0, 10, 12))
-    d.rect(s, white, (1, 6, 10, 9))
-    for x in (1, 4, 7):                                   # рваный низ вместо ног
-        d.polygon(s, white, [(x, 14), (x + 3, 14), (x + 1, 19)])
-    d.rect(s, shade, (8, 6, 3, 8))
-    d.ellipse(s, (0, 0, 0), (2, 4, 3, 5))                 # пустые чёрные глаза
-    d.ellipse(s, (0, 0, 0), (7, 4, 3, 5))
-    return outlined(s)
-
-
-def make_shine_form():
-    """Раненый Шайн в теле игрока (финал Бога): глаз с обломанными крыльями, трещины и фиолетовая радужка."""
-    base = make_shine(3)
-    d = pygame.draw
-    w, h = base.get_size()
-    cx, cy = w // 2, 46
-    d.circle(base, SHINE_IRIS[3], (cx + 1, cy + 4), 10)
-    d.circle(base, (20, 10, 30), (cx + 1, cy + 4), 5)
-    d.circle(base, (255, 255, 255), (cx - 1, cy + 2), 1)
-    for a, b in (((cx - 40, cy - 30), (cx - 28, cy - 10)), ((cx + 38, cy - 24), (cx + 26, cy - 8)), ((cx - 8, cy - 2), (cx + 6, cy + 12))):
-        d.line(base, (255, 60, 80), a, b, 2)              # раны
-    return pygame.transform.scale(base, (48, 39))
-
-
-def make_god_wings():
-    """Бог: идеальная радиальная симметрия. Никакого тела — только глаз и ряды крыльев вокруг него.
-    Радужку рисует босс (она следит за игроком); этот слой вращается."""
-    n = 150
-    s, d = _surf(n, n), pygame.draw
-    c = n // 2
-    gold, white, pale = (232, 190, 90), (255, 252, 238), (214, 232, 255)
-    for count, length, width, fill, edge, offset in ((24, 72, 7, pale, (150, 182, 228), 0.0),
-                                                      (24, 58, 8, white, gold, 7.5),
-                                                      (12, 40, 8, (255, 246, 205), gold, 0.0)):
-        for i in range(count):
-            ang = math.radians(offset + i * 360 / count)
-            _feather(s, (c + math.cos(ang) * 8, c + math.sin(ang) * 8), math.degrees(ang), length, width, fill, edge)
-    d.circle(s, gold, (c, c), 31, 2)                      # золотые кольца с насечками-символами
-    d.circle(s, gold, (c, c), 24, 1)
-    for i in range(36):
-        a = math.radians(i * 10)
-        r0, r1 = (24, 31) if i % 3 == 0 else (24, 27)
-        d.line(s, gold, (c + math.cos(a) * r0, c + math.sin(a) * r0), (c + math.cos(a) * r1, c + math.sin(a) * r1), 1)
-    d.circle(s, (255, 255, 255), (c, c), 17)              # единственный глаз
-    d.circle(s, gold, (c, c), 17, 2)
-    return s
-
-
-def make_gate_keeper():
-    """Хранитель врат: каменная статуя ангела с весами."""
-    s, d = _surf(40, 50), pygame.draw
-    st, light, dark = (168, 170, 182), (208, 210, 222), (120, 122, 138)
-    for side in (-1, 1):                                  # сложенные за спиной каменные крылья
-        d.polygon(s, dark, [(20 + side * 6, 14), (20 + side * 19, 6), (20 + side * 19, 36), (20 + side * 9, 40)])
-        d.line(s, st, (20 + side * 9, 16), (20 + side * 16, 12), 1)
-        d.line(s, st, (20 + side * 9, 24), (20 + side * 17, 22), 1)
-    d.polygon(s, st, [(12, 20), (28, 20), (31, 48), (9, 48)])           # хламида
-    d.line(s, dark, (16, 24), (14, 47), 1)
-    d.line(s, dark, (24, 24), (26, 47), 1)
-    d.rect(s, light, (15, 8, 10, 12), border_radius=3)                  # голова
-    d.rect(s, (90, 190, 255), (17, 12, 2, 2))                           # пустые светящиеся глаза
-    d.rect(s, (90, 190, 255), (21, 12, 2, 2))
-    d.ellipse(s, (232, 190, 90), (13, 3, 14, 5), 2)                     # нимб
-    d.rect(s, st, (6, 22, 5, 3))                                        # рука с весами
-    d.line(s, (232, 190, 90), (8, 24), (8, 6), 1)                       # стойка и коромысло
-    d.line(s, (232, 190, 90), (1, 8), (15, 8), 1)
-    for px in (2, 14):                                                  # чаши
-        d.line(s, (232, 190, 90), (px, 8), (px, 14), 1)
-        d.arc(s, (232, 190, 90), (px - 3, 11, 7, 6), math.pi, math.tau, 1)
-        d.rect(s, (232, 190, 90), (px - 3, 14, 7, 1))
-    return outlined(s)
-
-
-def make_cherub():
-    s, d = _surf(16, 16), pygame.draw
-    d.ellipse(s, (250, 250, 255), (0, 5, 7, 5))
-    d.ellipse(s, (250, 250, 255), (9, 5, 7, 5))
-    d.circle(s, (255, 215, 185), (8, 8), 5)
-    d.rect(s, (255, 215, 185), (6, 11, 4, 4))
-    s.set_at((6, 8), K)
-    s.set_at((10, 8), K)
-    d.rect(s, (255, 130, 150), (7, 10, 2, 1))
-    d.ellipse(s, (255, 220, 90), (5, 0, 6, 3), 1)
-    return outlined(s)
-
-
-def make_cloudling():
-    s, d = _surf(16, 13), pygame.draw
-    cloud, shade = (214, 220, 236), (168, 176, 204)
-    d.ellipse(s, shade, (1, 5, 14, 7))
-    d.circle(s, cloud, (5, 5), 4)
-    d.circle(s, cloud, (10, 5), 4)
-    d.ellipse(s, cloud, (1, 4, 14, 6))
-    d.line(s, K, (4, 5), (6, 6), 1)                       # злые глаза
-    d.line(s, K, (11, 5), (9, 6), 1)
-    d.polygon(s, (255, 230, 80), [(8, 9), (6, 12), (8, 12), (7, 15)])
-    return outlined(s)
-
-
-def make_halo():
-    s, d = _surf(16, 16), pygame.draw
-    d.circle(s, (255, 215, 80), (8, 8), 7)
-    d.circle(s, (0, 0, 0, 0), (8, 8), 4)
-    d.circle(s, (255, 245, 170), (8, 8), 7, 1)
-    d.circle(s, (255, 255, 255), (8, 8), 2)
-    s.set_at((8, 8), K)
-    for x, y in ((8, 0), (0, 8), (15, 8), (8, 15)):
-        s.set_at((x, y), (255, 245, 170))
-    return outlined(s)
-
-
-def make_dove():
-    s, d = _surf(15, 11), pygame.draw
-    d.ellipse(s, (250, 250, 255), (2, 3, 10, 6))
-    d.circle(s, (250, 250, 255), (11, 4), 3)
-    d.polygon(s, (255, 170, 60), [(13, 4), (15, 5), (13, 6)])
-    d.polygon(s, (214, 224, 242), [(3, 4), (6, 0), (9, 4)])
-    d.polygon(s, (250, 250, 255), [(2, 5), (0, 8), (4, 7)])
-    s.set_at((11, 3), K)
-    return outlined(s)
-
-
-def make_trumpeter():
-    s, d = _surf(16, 20), pygame.draw
-    d.polygon(s, (214, 232, 255), [(0, 5), (4, 3), (4, 12), (1, 11)])
-    d.polygon(s, (214, 232, 255), [(16, 5), (12, 3), (12, 12), (15, 11)])
-    d.polygon(s, (250, 250, 255), [(4, 8), (12, 8), (14, 19), (2, 19)])
-    d.rect(s, (255, 215, 185), (5, 2, 6, 6), border_radius=2)
-    s.set_at((6, 5), K)
-    s.set_at((9, 5), K)
-    d.ellipse(s, (255, 220, 90), (4, 0, 8, 3), 1)
-    d.line(s, (255, 205, 70), (8, 10), (15, 6), 2)        # труба
-    d.polygon(s, (255, 205, 70), [(13, 3), (16, 5), (16, 9), (13, 8)])
-    return outlined(s)
-
-
-def make_stone_angel():
-    s, d = _surf(18, 22), pygame.draw
-    st, dark = (170, 172, 184), (122, 124, 140)
-    for side in (-1, 1):
-        d.polygon(s, dark, [(9 + side * 2, 7), (9 + side * 9, 3), (9 + side * 9, 15), (9 + side * 3, 17)])
-    d.polygon(s, st, [(5, 9), (13, 9), (15, 21), (3, 21)])
-    d.rect(s, (206, 208, 220), (6, 2, 6, 7), border_radius=2)
-    d.rect(s, (90, 190, 255), (7, 5, 1, 1))
-    d.rect(s, (90, 190, 255), (10, 5, 1, 1))
-    d.line(s, dark, (7, 12), (6, 20), 1)
-    d.line(s, dark, (11, 12), (12, 20), 1)
-    return outlined(s)
-
-
-def make_cloud():
-    """Парящий блок-облако (препятствие Небес): ровно 16x16, чтобы стыковаться плиткой."""
-    s, d = _surf(16, 16), pygame.draw
-    d.rect(s, (244, 248, 255), (0, 0, 16, 16), border_radius=3)
-    for cx, cy, r in ((4, 3, 4), (11, 2, 4), (2, 10, 4), (13, 11, 4)):   # пушистые бугры по краям
-        d.circle(s, (255, 255, 255), (cx, cy), r)
-    d.rect(s, (208, 224, 245), (1, 12, 14, 3), border_radius=2)           # тень снизу
-    d.rect(s, (160, 192, 232), (0, 0, 16, 16), 1, border_radius=3)
-    return s
-
-
-def _icon_draw(kind, color):
-    s = pygame.Surface((12, 12), pygame.SRCALPHA)
-    d = pygame.draw
-    c = color
-    if kind == "burger":
-        d.rect(s, (230, 170, 80), (1, 2, 10, 3)); d.rect(s, c, (1, 5, 10, 2))
-        d.rect(s, (120, 70, 40), (1, 7, 10, 2)); d.rect(s, (230, 170, 80), (1, 9, 10, 2))
-    elif kind == "broom":
-        d.line(s, (150, 100, 60), (2, 1), (8, 8), 2); d.polygon(s, c, [(6, 7), (11, 8), (9, 11), (5, 10)])
-    elif kind == "tv":
-        d.rect(s, (90, 90, 110), (1, 2, 10, 8)); d.rect(s, c, (2, 3, 6, 6)); d.line(s, (200, 200, 200), (4, 2), (2, 0))
-    elif kind == "bomb":
-        d.circle(s, c, (5, 7), 5); d.rect(s, (250, 250, 250), (5, 0, 2, 3)); d.circle(s, (255, 230, 90), (6, 0), 1)
-    elif kind == "feather":
-        d.ellipse(s, c, (3, 0, 6, 11)); d.line(s, (200, 180, 120), (6, 1), (4, 11))
-    elif kind == "mask":
-        d.ellipse(s, c, (1, 0, 10, 12)); d.rect(s, K, (3, 4, 2, 2)); d.rect(s, K, (7, 4, 2, 2)); d.line(s, K, (6, 0), (4, 11))
-    elif kind == "revolver":
-        d.rect(s, c, (1, 3, 9, 3)); d.rect(s, c, (1, 6, 3, 5)); d.circle(s, (100, 70, 50), (6, 5), 2)
-    elif kind == "soldier":
-        d.rect(s, c, (3, 4, 6, 6)); d.rect(s, (255, 205, 170), (4, 1, 4, 3)); d.rect(s, (60, 60, 60), (9, 3, 2, 6))
-    elif kind == "compass":
-        d.circle(s, c, (6, 6), 5, 2); d.line(s, (230, 60, 70), (6, 6), (9, 2), 2); d.line(s, (250, 250, 250), (6, 6), (3, 10), 1)
-    elif kind == "clock":
-        d.circle(s, (240, 240, 250), (6, 6), 5); d.circle(s, c, (6, 6), 5, 1)
-        d.line(s, K, (6, 6), (6, 2)); d.line(s, K, (6, 6), (9, 7))
-    elif kind == "photo":
-        d.rect(s, c, (1, 1, 10, 10)); d.rect(s, (200, 200, 210), (2, 2, 8, 6)); d.rect(s, K, (1, 1, 10, 10), 1)
-    elif kind == "halo":
-        d.ellipse(s, c, (0, 3, 12, 6), 2); d.ellipse(s, (160, 100, 220), (1, 4, 10, 4), 1)
-    elif kind == "grenade":
-        d.circle(s, c, (6, 7), 4); d.rect(s, (70, 70, 60), (5, 1, 3, 3)); d.line(s, (220, 220, 90), (8, 2), (10, 1)); d.line(s, K, (3, 6), (9, 8), 1)
-    elif kind == "medkit":
-        d.rect(s, c, (1, 3, 10, 8)); d.rect(s, (220, 40, 50), (5, 4, 2, 6)); d.rect(s, (220, 40, 50), (3, 6, 6, 2)); d.rect(s, (200, 200, 200), (4, 1, 4, 2), 1)
-    elif kind == "anchor":
-        d.line(s, c, (6, 2), (6, 10), 2); d.line(s, c, (3, 5), (9, 5), 1); d.arc(s, c, (1, 4, 10, 8), 3.4, 6.0, 2); d.circle(s, c, (6, 2), 1)
-    elif kind == "wings":
-        d.polygon(s, c, [(6, 6), (0, 1), (1, 8), (5, 9)]); d.polygon(s, c, [(6, 6), (12, 1), (11, 8), (7, 9)]); d.line(s, (255, 215, 90), (5, 10), (7, 10), 1)
-    elif kind == "bat":
-        d.line(s, c, (2, 10), (9, 3), 3); d.circle(s, c, (9, 3), 2); d.line(s, (120, 80, 40), (2, 10), (4, 8), 3)
-    elif kind == "smg":
-        d.rect(s, c, (1, 4, 10, 3)); d.rect(s, c, (3, 7, 2, 4)); d.rect(s, (60, 60, 70), (7, 7, 2, 3)); d.rect(s, (60, 60, 70), (10, 3, 2, 2))
-    elif kind == "phone":
-        d.rect(s, c, (3, 1, 6, 10), border_radius=1); d.rect(s, (150, 210, 245), (4, 2, 4, 6)); d.line(s, (255, 90, 90), (4, 2), (8, 7), 1); d.line(s, (255, 90, 90), (8, 2), (4, 7), 1)
-    elif kind == "impmini":
-        d.circle(s, c, (6, 7), 4); d.polygon(s, (255, 230, 120), [(3, 4), (2, 1), (5, 3)]); d.polygon(s, (255, 230, 120), [(9, 4), (10, 1), (7, 3)]); d.rect(s, (255, 255, 200), (4, 6, 2, 2)); d.rect(s, (255, 255, 200), (7, 6, 2, 2))
-    elif kind == "axe":
-        d.line(s, (150, 100, 60), (2, 10), (8, 3), 2); d.polygon(s, c, [(6, 1), (11, 3), (10, 7), (7, 5)])
-    elif kind == "shotgun":
-        d.rect(s, (110, 110, 120), (3, 3, 9, 2)); d.rect(s, (110, 110, 120), (3, 6, 9, 2)); d.polygon(s, c, [(0, 5), (4, 4), (4, 9), (1, 11)])
-    elif kind == "kettle":
-        d.ellipse(s, c, (1, 3, 9, 8)); d.rect(s, c, (8, 4, 3, 2)); d.arc(s, K, (2, 0, 7, 6), 0, 3.14, 1)
-    elif kind == "gnome":
-        d.polygon(s, c, [(6, 0), (9, 5), (3, 5)]); d.rect(s, (255, 205, 170), (4, 5, 4, 3)); d.rect(s, (245, 245, 245), (3, 7, 6, 4))
-    elif kind == "mail":
-        d.rect(s, c, (1, 3, 10, 7)); d.line(s, (150, 140, 120), (1, 3), (6, 7)); d.line(s, (150, 140, 120), (11, 3), (6, 7))
-    elif kind == "monitor":
-        d.rect(s, c, (2, 1, 8, 10)); d.circle(s, (255, 80, 80), (6, 4), 1); d.rect(s, K, (4, 6, 4, 3), 1)
-    elif kind == "soulgeyser":
-        d.line(s, c, (6, 11), (6, 0), 3)
-        d.line(s, (255, 255, 255), (6, 11), (6, 0), 1)
-        for x, y in ((3, 8), (9, 5), (3, 2), (10, 9)):
-            d.circle(s, c, (x, y), 1)
-    elif kind == "scream":
-        d.circle(s, c, (6, 5), 5)
-        d.rect(s, (30, 20, 50), (3, 3, 2, 3)); d.rect(s, (30, 20, 50), (7, 3, 2, 3))
-        d.ellipse(s, (30, 20, 50), (4, 7, 4, 5))
-    elif kind == "thorn":
-        d.rect(s, c, (4, 3, 4, 8)); d.circle(s, c, (6, 3), 2); d.rect(s, (110, 70, 45), (3, 10, 6, 2))
-        for a, b in (((3, 4), (1, 3)), ((8, 4), (10, 3)), ((3, 7), (0, 7)), ((8, 7), (11, 7)), ((6, 1), (6, 0))):
-            d.line(s, (255, 250, 190), a, b, 1)
-    elif kind == "remote":
-        d.rect(s, c, (3, 0, 6, 12), border_radius=1); d.circle(s, (230, 60, 70), (6, 3), 1)
-        for y in (6, 9):
-            d.rect(s, (230, 230, 240), (4, y, 1, 1)); d.rect(s, (230, 230, 240), (7, y, 1, 1))
-    elif kind == "vest":
-        d.polygon(s, c, [(1, 1), (4, 0), (6, 3), (8, 0), (11, 1), (11, 11), (1, 11)])
-        d.line(s, (190, 200, 215), (6, 3), (6, 11), 1); d.rect(s, (190, 200, 215), (2, 6, 3, 2)); d.rect(s, (190, 200, 215), (7, 6, 3, 2))
+def draw_iris(surf, cx, cy, ox, oy, color, kind="round"):
+    """Радужка и зрачок глаз-боссов: тёмный контур, тень снизу, блик (кружки без сглаживания, как и сам спрайт)."""
+    pygame.draw.circle(surf, OUT, (cx + ox, cy + oy), 11)
+    pygame.draw.circle(surf, color, (cx + ox, cy + oy), 10)
+    pygame.draw.circle(surf, dark(color, 0.45), (cx + ox, cy + oy), 10, 2)
+    pygame.draw.circle(surf, color, (cx + ox - 1, cy + oy - 1), 8)
+    if kind == "slit":
+        pygame.draw.ellipse(surf, (25, 6, 6), (cx + int(ox * 1.5) - 2, cy + int(oy * 1.5) - 7, 4, 14))
     else:
-        d.rect(s, c, (2, 2, 8, 8))
-    return outlined(s)
+        pygame.draw.circle(surf, (20, 10, 30), (cx + int(ox * 1.5), cy + int(oy * 1.5)), 5)
+    hx, hy = cx + ox - 3, cy + oy - 4
+    surf.fill((255, 255, 255), (hx, hy, 2, 2))
+
+
+def _anim(fn, n=4, *args):
+    return [fn(i, *args).outlined() for i in range(n)]
+
+
+# имя -> (функция-фабрика кадров, мс на кадр). Статичные плитки возвращают один кадр.
+def _registry():
+    R = {}
+    ms = {}
+
+    def add(name, frames, t=130):
+        R[name] = frames
+        ms[name] = t
+
+    add("player", [H.hero("rob", i).outlined() for i in range(4)], 110)
+    add("bush", _anim(F.bush), 140)
+    add("tree", _anim(F.face_tree), 150)
+    add("bird", _anim(F.bird), 90)
+    add("soldier", _anim(H.soldier), 160)
+    add("lumberjack", _anim(B.lumberjack_boss), 120)
+    add("dog", _anim(F.dog), 90)
+    add("mailman", _anim(H.mailman), 120)
+    add("sprinkler", _anim(F.sprinkler), 110)
+    add("cart", _anim(F.cart), 120)
+    add("neighbor", _anim(H.neighbor), 110)
+    add("neighbor_boss", _anim(B.neighbor_boss), 120)
+    for v, n in ((1, "shine"), (2, "shine2"), (3, "shine3")):
+        add(n, [B.shine(i, v).outlined() for i in range(4)], 100)
+    add("eye", _anim(F.eye_swarm), 150)
+    add("fragment", _anim(F.fragment), 160)
+    add("glitchling", _anim(F.glitchling), 70)
+    add("chaos", _anim(B.chaos), 140)
+    add("living_spruce", _anim(F.living_spruce), 150)
+    add("landlord", _anim(H.landlord), 130)
+    add("tank", _anim(B.tank), 140)
+    add("cherub", _anim(F.cherub), 110)
+    add("cloudling", _anim(F.cloudling), 160)
+    add("halo", _anim(F.halo_ring), 120)
+    add("dove", _anim(F.dove), 100)
+    add("trumpeter", _anim(F.trumpeter), 130)
+    add("stone_angel", _anim(F.stone_angel), 220)
+    add("gate_keeper", _anim(B.gate_keeper), 220)
+    add("hellhound", _anim(F.hellhound), 90)
+    add("fire_imp", _anim(F.fire_imp), 100)
+    add("golem", _anim(F.magma_golem), 160)
+    add("ember", _anim(F.ember), 100)
+    add("idol", _anim(F.idol), 150)
+    for v, n in ((1, "imp"), (2, "imp2"), (3, "imp3")):
+        add(n, [B.imp_boss(i, v).outlined() for i in range(4)], 100)
+    add("imp_mini", _anim(F.imp_mini), 90)
+    add("rat", _anim(F.rat), 90)
+    add("cop", _anim(H.cop), 120)
+    add("drone", _anim(F.drone), 60)
+    add("car", _anim(F.car), 110)
+    add("tvmon", _anim(F.tvmon), 140)
+    add("mayor", _anim(B.mayor), 260)
+    add("mayor_desk", _anim(B.mayor_desk), 160)
+    add("mayor_surreal", _anim(B.mayor_surreal), 160)
+    add("player_shine_form", [B.shine_form(i).outlined() for i in range(4)], 100)
+    add("coin", [W.coin(i) for i in range(4)], 140)
+    return R, ms
+
+
+def _hero_frames(cid):
+    """(кадр стойки, кадры ходьбы) героя; все — с контуром."""
+    if cid == "soul":
+        fr = _anim(H.soul)
+        return fr[0], fr
+    if cid == "angel":
+        return H.angel(0, idle=True).outlined(), [H.angel(i).outlined() for i in range(4)]
+    if cid == "glitch":
+        base = [H.hero("glitch", i) for i in range(4)]
+        walk = []
+        for i, c in enumerate(base):
+            g = Canvas(c.w + 4, c.h)
+            ghost = Canvas(c.w, c.h)
+            for y in range(c.h):
+                for x in range(c.w):
+                    q = c.p[y][x]
+                    if q:
+                        ghost.p[y][x] = (255, 70, 200, 255)
+            g.blit(ghost, 3 + (i % 2), 0)
+            g.blit(c, 0, 0)
+            for y0, dx in (((4 + i * 3) % 14, 2 - i % 3), ((9 + i * 2) % 16, -1 + i % 2)):       # сбои строк
+                for x in range(c.w - 1, -1, -1):
+                    for yy in (y0, y0 + 1):
+                        if 0 <= yy < c.h and 0 <= x + dx < g.w and c.p[yy][x]:
+                            g.p[yy][x + dx] = c.p[yy][x]
+            walk.append(g.outlined())
+        return walk[0], walk
+    try:
+        walk = [H.hero(cid, i).outlined() for i in range(4)]
+        idle = H.hero(cid, 0, idle=True).outlined()
+    except KeyError:
+        walk = [H.hero("rob", i).outlined() for i in range(4)]
+        idle = H.hero("rob", 0, idle=True).outlined()
+    return idle, walk
 
 
 class SpriteBook:
     """Кэш всех спрайтов; создаётся после инициализации дисплея."""
 
     def __init__(self, item_defs, characters=None):
-        self.surf = {
-            "player": outlined(from_rows(PLAYER)), "bush": outlined(from_rows(BUSH)),
-            "tree": outlined(from_rows(TREE)), "bird": outlined(from_rows(BIRD)),
-            "rock": from_rows(ROCK), "soldier": outlined(from_rows(SOLDIER)),
-            "lumberjack": make_lumberjack(), "dog": make_dog(), "mailman": make_mailman(),
-            "sprinkler": make_sprinkler(), "cart": make_cart(), "neighbor": make_neighbor(),
-            "neighbor_boss": make_neighbor_boss(), "hedge": make_hedge(), "crate": make_crate(),
-            "shine": make_shine(1), "shine2": make_shine(2), "shine3": make_shine(3), "eye": make_eye(), "fragment": make_fragment(), "glitchling": make_glitchling(), "chaos": make_chaos(),
-            "living_spruce": make_living_spruce(), "landlord": make_landlord(), "tank": make_tank(),
-            "cherub": make_cherub(), "cloudling": make_cloudling(), "halo": make_halo(), "dove": make_dove(),
-            "trumpeter": make_trumpeter(), "stone_angel": make_stone_angel(), "gate_keeper": make_gate_keeper(),
-            "cloud": make_cloud(), "god": make_god_wings(), "player_shine_form": make_shine_form(),
-            "basalt": make_basalt(), "hellhound": make_hellhound(), "fire_imp": make_fire_imp(), "golem": make_golem(),
-            "ember": make_ember(), "idol": make_idol(), "imp": make_imp_boss(1), "imp2": make_imp_boss(2), "imp3": make_imp_boss(3),
-            "imp_mini": make_imp_mini(),
-            "rat": make_rat(), "cop": make_cop(), "drone": make_drone(), "car": make_car(), "tvmon": make_tvmon(),
-            "mayor": make_mayor(), "mayor_desk": make_mayor_desk(), "mayor_surreal": make_mayor_surreal(), "barrier": make_barrier(),
-        }
-        for cid, c in (characters or {"rob": {"scale": 1.0}}).items():
-            self.surf["player_" + cid] = make_player_sprite(cid, c.get("scale", 1.0))
-        for item in item_defs:
-            self.surf["icon_" + item.id] = _icon_draw(item.icon, item.color)
-        self.surf["heart_full"] = self._heart((230, 50, 70))
-        self.surf["heart_half"] = self._heart((230, 50, 70), half=True)
-        self.surf["heart_empty"] = self._heart((70, 50, 80))
-        self.surf["coin"] = self._coin()
-        self.surf["gem_heart"] = pygame.transform.scale(self._heart((255, 90, 110)), (9, 9))
+        self.surf = {}      # статичный/первый кадр каждого спрайта
+        self.anim = {}      # имя -> [Surface...] — цикл ходьбы/анимации
+        self.ms = {}        # мс на кадр
+        self.idle = {}      # имя -> Surface стойки (у героев)
+        self._flip = {}
         self._white = {}
+        frames, ms = _registry()
+        for name, fr in frames.items():
+            self.anim[name] = [c.to_surface() for c in fr]
+            self.surf[name] = self.anim[name][0]
+            self.ms[name] = ms[name]
+        for name, tile in (("rock", W.rock()), ("hedge", W.hedge()), ("barrier", W.barrier()), ("crate", W.crate()),
+                           ("basalt", W.basalt()), ("cloud", W.cloud()), ("god", B.god_wings())):
+            self.surf[name] = tile.to_surface()
+        for cid in (characters or {"rob": {}}):
+            idle, walk = _hero_frames(cid)
+            key = "player_" + cid
+            self.idle[key] = idle.to_surface()
+            self.anim[key] = [c.to_surface() for c in walk]
+            self.surf[key] = self.idle[key]
+            self.ms[key] = 105
+        for item in item_defs:
+            self.surf["icon_" + item.id] = W.icon(item.icon, item.color).to_surface()
+        self.surf["heart_full"] = W.heart("full").to_surface()
+        self.surf["heart_half"] = W.heart("half").to_surface()
+        self.surf["heart_empty"] = W.heart("empty").to_surface()
+        self.surf["gem_heart"] = W.gem_heart().to_surface()
+        self.tears = {}
+        self.props = {}
 
-    def _heart(self, color, half=False):
-        s = pygame.Surface((9, 8), pygame.SRCALPHA)
-        pts = [(1, 1), (2, 0), (3, 0), (4, 1), (5, 0), (6, 0), (7, 1), (8, 2), (7, 4), (4, 7), (1, 4), (0, 2)]
-        pygame.draw.polygon(s, color, pts)
-        pygame.draw.polygon(s, K, pts, 1)
-        if half:
-            empty = pygame.Surface((9, 8), pygame.SRCALPHA)
-            pygame.draw.polygon(empty, (70, 50, 80), pts)
-            pygame.draw.polygon(empty, K, pts, 1)
-            empty.blit(s, (0, 0), pygame.Rect(0, 0, 4, 8))
-            return empty
-        return s
+    # --- выбор кадра ---
+    def _frame(self, name, state=None, phase=0):
+        frames = self.anim.get(name)
+        if frames is None:
+            return 0, self.surf[name]
+        if state == "idle" and name in self.idle:
+            return -1, self.idle[name]
+        idx = (pygame.time.get_ticks() // self.ms.get(name, 120) + phase) % len(frames)
+        return idx, frames[idx]
 
-    def _coin(self):
-        s = pygame.Surface((7, 7), pygame.SRCALPHA)
-        pygame.draw.circle(s, (255, 215, 70), (3, 3), 3)
-        pygame.draw.circle(s, K, (3, 3), 3, 1)
-        s.set_at((2, 2), (255, 255, 220))
-        return s
+    def get(self, name, flip=False, state=None, phase=0):
+        idx, surf = self._frame(name, state, phase)
+        if not flip:
+            return surf
+        key = (name, idx)
+        hit = self._flip.get(key)
+        if hit is None:
+            hit = self._flip[key] = pygame.transform.flip(surf, True, False)
+        return hit
 
-    def get(self, name, flip=False):
-        surf = self.surf[name]
-        return pygame.transform.flip(surf, True, False) if flip else surf
-
-    def white(self, name):
-        if name not in self._white:
-            self._white[name] = silhouette(self.surf[name])
-        return self._white[name]
+    def white(self, name, state=None, phase=0):
+        idx, surf = self._frame(name, state, phase)
+        key = (name, idx)
+        if key not in self._white:
+            self._white[key] = silhouette(surf)
+        return self._white[key]
 
     def icon(self, item_id):
         return self.surf["icon_" + item_id]
+
+    def prop(self, kind, used=False):
+        key = (kind, bool(used))
+        if key not in self.props:
+            self.props[key] = W.prop(kind, used).to_surface()
+        return self.props[key]
+
+    def tear(self, radius, color, friendly):
+        key = (int(radius), tuple(color), bool(friendly))
+        if key not in self.tears:
+            if len(self.tears) > 300:
+                self.tears.clear()
+            self.tears[key] = W.tear(radius, color, friendly).to_surface()
+        return self.tears[key]

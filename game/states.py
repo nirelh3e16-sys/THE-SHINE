@@ -4,8 +4,8 @@ import random
 
 import pygame
 
-from .ui.menus import Menu
-from .settings import PUBLISHER
+from .ui.menus import Menu, load_logo
+from .settings import PUBLISHER, SPR_DIR
 from . import i18n
 from .i18n import LANGUAGE_NAMES
 from .graphics_settings import cycle as gfx_cycle, TIME_LABELS, STRENGTH_LABELS, BRIGHTNESS_LABELS, QUALITY_LABELS
@@ -61,38 +61,16 @@ class MenuState:
         self._build()
 
     def _make_backdrop(self):
-        from .world.dungeon import RoomSpec
-        from .world.room import Room
-        from .world.zones import ZONES
-        rng = random.Random()
-        zone_id = rng.choice(("forest", "suburbs", "city", "center", "shine", "hell"))
-        zone = ZONES[zone_id]
-        spec = RoomSpec((0, 0), "start", {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0)}, 0)
-        room = Room(spec, zone, rng.random(), self.game.data, [], "menu:")
-        if zone_id == "shine" and rng.random() < 0.5:
-            room.set_theme(zone["judgment_theme"])
+        """Фон меню — картинка spr/bg.png (1440x720 -> ровно в 3 раза меньше); чёрные поля сливаются с её рамкой."""
         surf = pygame.Surface((GAME_W, GAME_H))
-        off = pygame.Vector2()
-        room.draw_floor(surf, off)
-        room.draw_obstacles(surf, off, self.game.sprites)
-        sprites = self.game.sprites
-        # декорации: пара обитателей локации, её босс и сам герой
-        for kind in [rng.choice([k for k, _ in zone["enemy_pool"]]) for _ in range(3)] if zone["enemy_pool"] else []:
-            img = sprites.get(self.game.data.enemies[kind]["sprite"], rng.random() < 0.5)
-            surf.blit(img, img.get_rect(center=(rng.randint(60, 300), rng.randint(70, 220))))
-        boss = sprites.get(ENEMY_SPRITE_OF_BOSS[zone["boss"]])
-        surf.blit(boss, boss.get_rect(center=(130, 150)))
-        hero = sprites.get("player")
-        surf.blit(hero, hero.get_rect(midbottom=(70, 200)))
-        # затемнение к правому нижнему углу, чтобы читались название и кнопки
-        shade = pygame.Surface((GAME_W, GAME_H), pygame.SRCALPHA)
-        for x in range(0, GAME_W, 4):
-            alpha = int(max(0, (x - 140) / (GAME_W - 140)) ** 1.4 * 210)
-            pygame.draw.rect(shade, (12, 6, 26, alpha), (x, 0, 4, GAME_H))
-        for y in range(0, GAME_H, 4):
-            alpha = int(max(0, (y - 90) / (GAME_H - 90)) * 120)
-            pygame.draw.rect(shade, (12, 6, 26, alpha), (0, y, GAME_W, 4), 0)
-        surf.blit(shade, (0, 0))
+        surf.fill((0, 0, 0))
+        try:
+            img = pygame.image.load(str(SPR_DIR / "bg.png")).convert_alpha()
+        except (pygame.error, FileNotFoundError):
+            surf.fill((16, 9, 8))
+            return surf
+        h = max(1, int(img.get_height() * GAME_W / img.get_width()))
+        surf.blit(pygame.transform.scale(img, (GAME_W, h)), (0, (GAME_H - h) // 2))
         return surf
 
     def _build(self):
@@ -101,7 +79,7 @@ class MenuState:
             entries.append(("Продолжить", self.game.continue_run))
         entries += [("Новая игра", self.game.new_game), ("Бестиарий", self.game.go_bestiary),
                     ("Настройки", self.game.go_settings), ("Выход", self.game.quit)]
-        self.menu = Menu("THE SHINE", entries, corner=True)
+        self.menu = Menu("THE SHINE", entries, corner=True, logo=load_logo())
 
     def handle_event(self, event):
         self.menu.handle_event(event)

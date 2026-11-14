@@ -6,6 +6,7 @@
 import pygame
 
 from ..i18n import tr
+from ..settings import APP_ROOT, RES_ROOT, SPR_DIR
 
 _cache = {}
 _render_cache = {}   # (текст, размер, цвет, тень) -> (картинка, картинка тени)
@@ -17,14 +18,43 @@ COLORS = {"white": (245, 240, 230), "gold": (255, 215, 90), "red": (255, 100, 10
           "green": (140, 240, 120), "grey": (150, 145, 165), "blue": (140, 190, 255)}
 
 
+FONT_NAMES = ("TheShine.ttf", "TheShine-Regular-Cyrillic.ttf", "TheShine-Regular-Cyrillic__1_.ttf")
+FONT_DIRS = (APP_ROOT, RES_ROOT, RES_ROOT / "assets" / "fonts", APP_ROOT / "assets" / "fonts", SPR_DIR)
+FONT_SCALE = 0.92   # TheShine шире прежнего шрифта: чуть уменьшаем кегль, чтобы вёрстка меню и HUD не поехала
+# в шрифте нет этих знаков — подменяем похожими, иначе вместо них рисуются квадраты
+GLYPH_FALLBACK = str.maketrans({"«": '"', "»": '"', "“": '"', "”": '"', "„": '"', "—": "-", "–": "-", "…": "...",
+                                "·": ".", "×": "x", "•": "*", "←": "<", "→": ">", "↑": "+", "↓": "v", "≈": "~", "^": "+"})
+_font_path = None
+
+
+def _find_font():
+    global _font_path
+    if _font_path is None:
+        _font_path = ""
+        for d in FONT_DIRS:
+            for name in FONT_NAMES:
+                if (d / name).is_file():
+                    _font_path = str(d / name)
+                    return _font_path
+    return _font_path
+
+
 def font(size=11):
     if size not in _cache:
         f = None
-        for name in ("segoeui", "arial", "dejavusans", "liberationsans"):
-            path = pygame.font.match_font(name, bold=True)
-            if path:
-                f = pygame.font.Font(path, size)
-                break
+        path = _find_font()
+        px = max(7, int(round(size * FONT_SCALE)))
+        if path:
+            try:
+                f = pygame.font.Font(path, px)
+            except (OSError, pygame.error):
+                f = None
+        if f is None:   # запасной вариант, если TheShine.ttf не найден рядом с main.py
+            for name in ("segoeui", "arial", "dejavusans", "liberationsans"):
+                sys_path = pygame.font.match_font(name, bold=True)
+                if sys_path:
+                    f = pygame.font.Font(sys_path, size)
+                    break
         _cache[size] = f or pygame.font.Font(None, size + 6)
     return _cache[size]
 
@@ -48,7 +78,7 @@ def _rendered(text, size, col, shadow):
 
 
 def draw_text(surf, text, pos, color="white", size=11, anchor="topleft", shadow=True):
-    text = tr(text)
+    text = tr(text).translate(GLYPH_FALLBACK)
     col = COLORS.get(color, color)
     img, shade = _rendered(text, size, tuple(col), shadow)
     rect = img.get_rect(**{anchor: pos})
@@ -59,7 +89,7 @@ def draw_text(surf, text, pos, color="white", size=11, anchor="topleft", shadow=
 
 
 def wrap(text, width, size=11):
-    text = tr(text)
+    text = tr(text).translate(GLYPH_FALLBACK)
     key = (text, width, size)
     hit = _wrap_cache.get(key)
     if hit is None:

@@ -228,8 +228,9 @@ class Enemy:
         if self.data["behavior"] == "blink" and self.state == "windup" and hasattr(self, "target"):
             if int(pygame.time.get_ticks() / 70) % 2:
                 pygame.draw.circle(surf, (80, 255, 220), (int(self.target.x + off.x), int(self.target.y + off.y)), 9, 1)
-        img = sprites.white(self.sprite) if self.hurt_t > 0 else sprites.get(self.sprite, self.flip)
-        bob = int(math.sin(pygame.time.get_ticks() / 120 + self.pos.x) * 1.5) if self.speed > 0 else 0
+        ph = (id(self) >> 4) % 4   # у однотипных врагов кадры идут вразнобой
+        img = sprites.white(self.sprite, phase=ph) if self.hurt_t > 0 else sprites.get(self.sprite, self.flip, phase=ph)
+        bob = 0
         rect = img.get_rect(center=(int(self.pos.x + off.x), int(self.pos.y + off.y) + bob))
         surf.blit(img, rect)
         if self.warning and int(pygame.time.get_ticks() / 70) % 2:

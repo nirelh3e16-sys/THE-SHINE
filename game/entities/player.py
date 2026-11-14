@@ -158,8 +158,9 @@ class Player:
     def draw(self, surf, off, sprites):
         if self.iframes > 0 and self.dodge_t <= 0 and int(self.iframes * 20) % 2:
             return
-        img = sprites.get("player_shine_form" if self.form == "shine" else "player_" + self.char_id, self.aim.x < 0)
-        bob = int(math.sin(pygame.time.get_ticks() / 80)) if self.moving else 0
+        state = "walk" if (self.moving or self.dodge_t > 0) else "idle"
+        img = sprites.get("player_shine_form" if self.form == "shine" else "player_" + self.char_id, self.aim.x < 0, state)
+        bob = 0   # покачивание теперь входит в кадры ходьбы
         rect = img.get_rect(midbottom=(int(self.pos.x + off.x), int(self.pos.y + off.y) + int(self.RADIUS) + 4 + bob))
         if self.dodge_t > 0:
             img = img.copy()

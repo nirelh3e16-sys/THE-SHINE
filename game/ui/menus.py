@@ -1,14 +1,34 @@
 """Меню, журнал свидетельств и просмотр предметов."""
+import math
+
 import pygame
 
 from .text import draw_text, wrap
 from ..i18n import tr
-from ..settings import GAME_W, GAME_H
+from ..settings import GAME_W, GAME_H, SPR_DIR
 from ..systems.morality import TESTIMONIES
 
 
+_logo = None
+
+
+def load_logo():
+    """Логотип из spr/logo_big.png: обрезаем прозрачные поля и уменьшаем вдвое (исходник нарисован в 2x)."""
+    global _logo
+    if _logo is None:
+        try:
+            img = pygame.image.load(str(SPR_DIR / "logo_big.png")).convert_alpha()
+            img = img.subsurface(img.get_bounding_rect()).copy()
+            k = 2 if img.get_width() > 400 else 1
+            _logo = pygame.transform.scale(img, (max(1, img.get_width() // k), max(1, img.get_height() // k)))
+        except (pygame.error, FileNotFoundError, ValueError):
+            _logo = False
+    return _logo or None
+
+
 class Menu:
-    def __init__(self, title, entries, corner=False, top=120, step=22, title_y=50):
+    def __init__(self, title, entries, corner=False, top=120, step=22, title_y=50, logo=None):
+        self.logo = logo   # картинка вместо текста названия
         self.title = title
         self.entries = entries  # [(label, callback)]
         self.selected = 0
@@ -39,7 +59,11 @@ class Menu:
 
     def draw(self, surf):
         if self.corner:
-            draw_text(surf, self.title, (GAME_W - 14, self._y(0) - 22), "gold", 30, "bottomright")
+            if self.logo is not None:   # логотип по центру сверху, слегка покачивается
+                bob = int(math.sin(pygame.time.get_ticks() / 520) * 2)
+                surf.blit(self.logo, self.logo.get_rect(center=(GAME_W // 2, 66 + bob)))
+            else:
+                draw_text(surf, self.title, (GAME_W - 14, self._y(0) - 22), "gold", 30, "bottomright")
             for i, (label, _) in enumerate(self.entries):
                 sel = i == self.selected
                 label = tr(label)

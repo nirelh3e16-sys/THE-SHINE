@@ -73,8 +73,13 @@ def draw_hud(surf, play, sprites):
         x, y = (GAME_W - w) // 2, 244
         if glitch:
             x += int(pygame.time.get_ticks() / 70) % 5 - 2
-        pygame.draw.rect(surf, (30, 10, 20), (x - 1, y - 1, w + 2, 9))
-        pygame.draw.rect(surf, (220, 50, 70), (x, y, int(w * max(0, boss.hp) / boss.max_hp), 7))
+        pygame.draw.rect(surf, (26, 13, 18), (x - 2, y - 2, w + 4, 11))
+        pygame.draw.rect(surf, (74, 22, 34), (x, y, w, 7))
+        fill_w = int(w * max(0, boss.hp) / boss.max_hp)
+        pygame.draw.rect(surf, (214, 50, 70), (x, y, fill_w, 7))
+        if fill_w > 2:
+            pygame.draw.rect(surf, (255, 128, 140), (x, y, fill_w, 2))
+            pygame.draw.rect(surf, (140, 28, 48), (x, y + 6, fill_w, 1))
         draw_text(surf, boss.name.upper(), (GAME_W // 2, y - 1), "white", 9, "midbottom")
     play.notes.draw(surf)
 
@@ -89,8 +94,10 @@ def _draw_vitals(surf, p, sprites, corner, show_coins):
         w = 84
         x = GAME_W - 6 - w if right else 6
         y = (GAME_H - 14) if bottom else 4
-        pygame.draw.rect(surf, (30, 10, 40), (x - 1, y - 1, w + 2, 10))
+        pygame.draw.rect(surf, (26, 13, 18), (x - 2, y - 2, w + 4, 12))
+        pygame.draw.rect(surf, (60, 24, 76), (x, y, w, 8))
         pygame.draw.rect(surf, (200, 70, 230), (x, y, int(w * max(0, p.hp) / p.max_hp), 8))
+        pygame.draw.rect(surf, (236, 160, 255), (x, y, int(w * max(0, p.hp) / p.max_hp), 2))
         draw_text(surf, f"ШАЙН {max(0, p.hp)}/{p.max_hp}", (x + w // 2, y - 1), "white", 8, "midtop")
     for i in range(hearts):
         hp_here = p.hp - i * 2
@@ -124,8 +131,10 @@ def _draw_active(surf, play, sprites, corner):
     x = GAME_W - 28 if _is_right(corner) else 6
     y = GAME_H - 28 if _is_bottom(corner) else 6
     box = pygame.Rect(x, y, 22, 22)
-    pygame.draw.rect(surf, (30, 20, 45), box)
-    pygame.draw.rect(surf, (200, 180, 255), box, 1)
+    pygame.draw.rect(surf, (26, 13, 18), box.inflate(2, 2))
+    pygame.draw.rect(surf, (56, 38, 62), box)
+    pygame.draw.rect(surf, (150, 120, 170), box, 1)
+    pygame.draw.line(surf, (200, 180, 220), (box.x + 1, box.y + 1), (box.right - 2, box.y + 1))
     if not p.inv.active_id:
         return
     surf.blit(sprites.icon(p.inv.active_id), (box.x + 4, box.y + 4))

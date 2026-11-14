@@ -56,9 +56,11 @@ class Hazard:
             pygame.draw.circle(surf, (255, 235, 150), c, max(2, r.w // 3))
             pygame.draw.circle(surf, (255, 220, 90), c, r.w // 2, 2)
         elif self.kind == "lava":
+            pygame.draw.rect(surf, (26, 13, 18), r.inflate(2, 2))
             pygame.draw.rect(surf, (255, 120, 30), r)
             pygame.draw.rect(surf, (255, 225, 90), r, 3)
         elif self.kind == "wing":
+            pygame.draw.rect(surf, (26, 13, 18), r.inflate(2, 2))
             pygame.draw.rect(surf, (255, 250, 220), r)
             pygame.draw.rect(surf, (255, 205, 80), r, 3)
         elif self.kind == "mower":
