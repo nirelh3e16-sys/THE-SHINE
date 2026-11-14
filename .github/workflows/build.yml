@@ -42,6 +42,10 @@ jobs:
           if (Test-Path "assets") { $pyi += @("--add-data", "assets;assets") }
           if (Test-Path "mus")    { $pyi += @("--add-data", "mus;mus") }
           else { Write-Warning "Папка mus не найдена: игра будет собрана без музыки." }
+          if (Test-Path "spr")    { $pyi += @("--add-data", "spr;spr") }
+          else { Write-Warning "Папка spr не найдена: меню будет без логотипа и фона." }
+          if (Test-Path "TheShine.ttf") { $pyi += @("--add-data", "TheShine.ttf;.") }
+          else { Write-Warning "TheShine.ttf не найден: будет использован системный шрифт." }
           if (Test-Path "icon.ico") { $pyi += @("--icon", "icon.ico", "--add-data", "icon.ico;.") }
           else { Write-Warning "icon.ico не найден: будет использована запасная иконка." }
           $pyi += "main.py"
