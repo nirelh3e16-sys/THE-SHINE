@@ -41,6 +41,8 @@ class Game:
         self.display = Display(self.cfg["window_scale"], self.cfg["fullscreen"], self.cfg.get("gpu_present", True))
         self.display.fill_mode = settings.get("fill", "blur")
         self.sprites = SpriteBook(list(self.data.items.items.values()), self.characters)
+        from .entities.projectile import sprites_ref
+        sprites_ref.book = self.sprites
         self.audio = AudioManager(settings.get("volume", self.cfg["master_volume"]))
         self.effects = Effects(self.cfg["max_particles"], settings.get("screen_shake", True))
         self.vignette = make_vignette((GAME_W, GAME_H))

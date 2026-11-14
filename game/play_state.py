@@ -1838,37 +1838,35 @@ class PlayState:
         x, y = int(prop.pos.x + off.x), int(prop.pos.y + off.y)
         t = pygame.time.get_ticks() / 1000
         if prop.kind == "pedestal":
-            pygame.draw.rect(surf, (140, 140, 160), (x - 8, y - 2, 16, 10))
-            pygame.draw.rect(surf, (34, 24, 48), (x - 8, y - 2, 16, 10), 1)
+            base = self.game.sprites.prop("pedestal")
+            surf.blit(base, (x - base.get_width() // 2, y - 3))
             icon = self.game.sprites.icon(prop.item_id)
             surf.blit(icon, icon.get_rect(midbottom=(x, y - 3 + int(math.sin(t * 3) * 2))))
             if prop.price:
                 draw_text(surf, str(prop.price), (x, y + 9), "gold", 9, "midtop")
         elif prop.kind == "card":
-            pygame.draw.rect(surf, (140, 140, 160), (x - 8, y - 2, 16, 10))
-            pygame.draw.rect(surf, (34, 24, 48), (x - 8, y - 2, 16, 10), 1)
+            base = self.game.sprites.prop("pedestal")
+            surf.blit(base, (x - base.get_width() // 2, y - 3))
             bob = int(math.sin(t * 3) * 2)
-            card = pygame.Rect(x - 7, y - 20 + bob, 14, 18)
-            pygame.draw.rect(surf, (255, 215, 90), card, border_radius=2)
-            pygame.draw.rect(surf, (34, 24, 48), card, 1, border_radius=2)
-            _draw_text(surf, "?", card.center, (60, 30, 90), 12, "center", shadow=False)
+            card = self.game.sprites.prop("card")
+            surf.blit(card, (x - card.get_width() // 2, y - 23 + bob))
         elif prop.kind == "heal":
             surf.blit(self.game.sprites.get("heart_full"), (x - 5, y - 5))
             draw_text(surf, str(prop.price), (x, y + 6), "gold", 9, "midtop")
         elif prop.kind == "npc":
-            col = (120, 120, 140) if prop.used else (200, 140, 90)
-            pygame.draw.rect(surf, col, (x - 5, y - 4, 10, 12))
-            pygame.draw.circle(surf, (255, 205, 170), (x, y - 8), 5)
-            pygame.draw.rect(surf, (34, 24, 48), (x - 5, y - 4, 10, 12), 1)
+            npc = self.game.sprites.prop("npc", prop.used)
+            surf.blit(npc, npc.get_rect(midbottom=(x, y + 10)))
         elif prop.kind == "altar" and self.game.data.events[prop.event_id].get("prop") == "bed":
-            pygame.draw.rect(surf, (110, 160, 210), (x - 14, y - 6, 28, 16))
-            pygame.draw.rect(surf, (255, 250, 240), (x - 14, y - 6, 9, 16))
-            pygame.draw.rect(surf, (34, 24, 48), (x - 14, y - 6, 28, 16), 1)
+            bed = self.game.sprites.prop("bed")
+            surf.blit(bed, bed.get_rect(center=(x, y + 2)))
         elif prop.kind == "altar":
-            pygame.draw.rect(surf, (110, 110, 130), (x - 10, y - 6, 20, 14))
-            pygame.draw.rect(surf, (34, 24, 48), (x - 10, y - 6, 20, 14), 1)
+            altar = self.game.sprites.prop("altar", prop.used)
+            surf.blit(altar, altar.get_rect(center=(x, y + 1)))
             if not prop.used:
-                pygame.draw.circle(surf, (200, 120, 255), (x, y - 12 + int(math.sin(t * 4) * 2)), 4)
+                oy = y - 12 + int(math.sin(t * 4) * 2)
+                pygame.draw.circle(surf, (26, 13, 18), (x, oy), 5)
+                pygame.draw.circle(surf, (200, 120, 255), (x, oy), 4)
+                surf.fill((250, 230, 255), (x - 2, oy - 2, 2, 2))
         elif prop.kind == "apparition" and not prop.used:
             for i in range(5):
                 pygame.draw.ellipse(surf, (255, 250, 220), (x - 4 + i * 5, y - 14 + i * 3, 10, 24), 1)
@@ -1883,19 +1881,14 @@ class PlayState:
             pygame.draw.lines(surf, (255, 220, 90), False, [(x - 2, y - 36), (x + 3, y - 22), (x - 3, y - 8), (x + 2, y + 6)], 1)
             pygame.draw.rect(surf, (20, 12, 20), frame, 2, border_radius=4)
         elif prop.kind == "gates":
-            pygame.draw.rect(surf, (255, 245, 200), (x - 18, y - 30, 36, 40), border_radius=18)
-            pygame.draw.rect(surf, (255, 255, 255), (x - 12, y - 24, 24, 34), border_radius=12)
-            pygame.draw.rect(surf, (255, 215, 90), (x - 18, y - 30, 36, 40), 2, border_radius=18)
+            gate = self.game.sprites.prop("gates")
+            surf.blit(gate, gate.get_rect(midbottom=(x, y + 11)))
         elif prop.kind == "house":
-            pygame.draw.rect(surf, (225, 205, 170), (x - 22, y - 14, 44, 30))
-            pygame.draw.polygon(surf, (190, 70, 60), [(x - 27, y - 14), (x, y - 36), (x + 27, y - 14)])
-            pygame.draw.rect(surf, (110, 70, 45), (x - 5, y, 10, 16))
-            pygame.draw.rect(surf, (120, 190, 240), (x - 18, y - 8, 9, 9))
-            pygame.draw.rect(surf, (120, 190, 240), (x + 9, y - 8, 9, 9))
-            pygame.draw.rect(surf, (34, 24, 48), (x - 22, y - 14, 44, 30), 1)
+            house = self.game.sprites.prop("house")
+            surf.blit(house, house.get_rect(midbottom=(x, y + 17)))
         elif prop.kind == "exit":
-            pygame.draw.rect(surf, (110, 70, 45), (x - 8, y - 4, 16, 14))
-            pygame.draw.rect(surf, (255, 235, 150), (x - 6, y - 2, 12, 10), 1)
+            door = self.game.sprites.prop("exit")
+            surf.blit(door, door.get_rect(center=(x, y + 3)))
         elif prop.kind == "sky_portal":   # белый вихрь в золотой оправе: ведёт на Небеса
             pygame.draw.circle(surf, (255, 205, 80), (x, y), 19, 3)
             for i in range(4):
