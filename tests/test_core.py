@@ -1053,8 +1053,8 @@ class MiniBossItemTests(unittest.TestCase):
             for opt in self.db.card_options([], random.Random(seed)):
                 self.assertFalse(self.db.items[opt].drop_only)
 
-    def test_vest_adds_three_hearts_and_armor_flag(self):
-        self.assertEqual(self.db.stats(["kevlar_vest"])["max_hp"], BASE_STATS["max_hp"] + 6)
+    def test_vest_only_gives_armor_flag_without_extra_health(self):
+        self.assertEqual(self.db.stats(["kevlar_vest"])["max_hp"], BASE_STATS["max_hp"])
         self.assertIn("armor", self.db.flags(["kevlar_vest"]))
 
     def test_new_combos(self):
@@ -1069,6 +1069,26 @@ class MiniBossItemTests(unittest.TestCase):
         for item_id in ("thorn_cannon", "old_remote", "kevlar_vest"):
             self.assertTrue(self.db.items[item_id].name)
             self.assertIn(self.db.items[item_id].icon, ("thorn", "remote", "vest"))
+
+
+@unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+class HellRiftConditionTests(unittest.TestCase):
+    def _open(self, endings, secret=False):
+        from game.play_state import PlayState
+        fake = SimpleNamespace(game=SimpleNamespace(save=SimpleNamespace(data={"endings": endings})),
+                               morality=SimpleNamespace(secret_unlocked=lambda: secret))
+        return PlayState.hell_open(fake)
+
+    def test_needs_good_and_bad_endings(self):
+        self.assertFalse(self._open([]))
+        self.assertFalse(self._open(["good"]))
+        self.assertFalse(self._open(["bad"]))
+        self.assertTrue(self._open(["good", "bad"]))
+        self.assertTrue(self._open(["secret", "bad"]))      # секретная концовка — тоже победа над The Shine
+        self.assertFalse(self._open(["evil", "true"]))
+
+    def test_old_secret_path_still_works(self):
+        self.assertTrue(self._open([], secret=True))
 
 
 class NeedlesTests(unittest.TestCase):
@@ -1246,17 +1266,27 @@ class MiniBossItemEffectTests(unittest.TestCase):
         p.recompute()
         return p
 
-    def test_vest_absorbs_forty_percent_on_average_and_adds_hearts(self):
+    def test_vest_has_fifty_percent_chance_to_absorb_a_hit_and_adds_no_health(self):
         p = self._player("kevlar_vest")
-        self.assertEqual(p.max_hp, 12)
-        p.hp = 1000
-        for _ in range(100):
+        self.assertEqual(p.max_hp, self._player().max_hp)
+        p.hp = 100000
+        p.rng = random.Random(1)
+        absorbed = 0
+        for _ in range(2000):
             p.iframes = 0
-            self.assertTrue(p.hurt(1))
-        self.assertIn(1000 - p.hp, (59, 60))
+            before = p.hp
+            if p.hurt(2):
+                self.assertEqual(before - p.hp, 2)       # удар прошёл целиком
+            else:
+                absorbed += 1
+                self.assertEqual(p.hp, before)           # поглощён полностью
+                self.assertTrue(p.absorbed_hit)
+                self.assertGreater(p.iframes, 0)         # после поглощения — короткая неуязвимость
+                p.absorbed_hit = False
+        self.assertTrue(900 <= absorbed <= 1100, absorbed)
         plain = self._player()
         plain.hp = 1000
-        plain.hurt(2)
+        self.assertTrue(plain.hurt(2))
         self.assertEqual(plain.hp, 998)
 
     def test_old_remote_makes_shots_homing_and_steers_towards_nearest_enemy(self):
@@ -1409,9 +1439,12 @@ class GeyserTests(unittest.TestCase):
         self.assertTrue(c.release())
         self.assertEqual(c.value, 0.0)
 
-    def test_range_is_25_blocks_and_scream_is_four_times_wider(self):
-        from game.systems.geyser import Geyser, RANGE
+    def test_balancer_range_is_5_blocks_scream_stays_25_and_four_times_wider(self):
+        from game.systems.geyser import Geyser, RANGE, BALANCER_RANGE
         bal, scr = Geyser.balancer(), Geyser.scream()
+        self.assertEqual(BALANCER_RANGE, 5 * 16)
+        self.assertEqual(bal.reach, 5 * 16)
+        self.assertEqual(scr.reach, RANGE)
         self.assertEqual(RANGE, 25 * 16)
         self.assertEqual(scr.width, bal.width * 4)
         self.assertGreater(scr.duration, bal.duration)
@@ -1423,9 +1456,9 @@ class GeyserTests(unittest.TestCase):
         from game.systems.geyser import Geyser
         g = Geyser.balancer()
         g.start((0, 0), (1, 0))
-        self.assertTrue(g.hits((300, 3), 2))
-        self.assertFalse(g.hits((300, 40), 2))             # в стороне от луча
-        self.assertFalse(g.hits((500, 0), 2))              # дальше 25 блоков
+        self.assertTrue(g.hits((60, 3), 2))
+        self.assertFalse(g.hits((60, 40), 2))              # в стороне от луча
+        self.assertFalse(g.hits((120, 0), 2))              # дальше 5 блоков
         self.assertFalse(g.hits((-30, 0), 2))              # позади игрока
         for _ in range(30):                                # курсор ушёл вверх — луч поворачивается за ним
             g.update(1 / 60, (0, 0), (0, -1))
