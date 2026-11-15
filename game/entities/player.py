@@ -1,5 +1,6 @@
 """Игрок: движение, уклонение, здоровье, характеристики."""
 import math
+import random
 
 import pygame
 
@@ -15,7 +16,7 @@ class Player:
     DECEL = 6.5       # остановка ≈ 0.15 с
     DODGE_TIME = 0.22
     DODGE_COOLDOWN = 0.9
-    ARMOR_TAKEN = 0.6   # Бронежилет поглощает 40% урона: в среднем проходит 60%
+    ARMOR_BLOCK_CHANCE = 0.5   # Бронежилет: с шансом 50% удар поглощается полностью
     SHINE_HP = 1000.0       # финал Бога: в игрока вселяется раненый Шайн
     SHINE_DAMAGE = 100.0
 
@@ -40,7 +41,8 @@ class Player:
         self.hp = self.max_hp
         self.iframes = 0.0
         self.needles = Needles()    # иголки Живой ели, застрявшие в игроке
-        self._armor_carry = 0.0     # дробный остаток урона при поглощении бронёй
+        self.rng = random.Random()  # источник случайности брони (в тестах подменяется)
+        self.absorbed_hit = False   # True, если последний удар поглотил Бронежилет (play_state показывает эффект и сбрасывает)
         self.dodge_t = 0.0
         self.dodge_cd = 0.0
         self.dodge_dir = pygame.Vector2(1, 0)
@@ -94,10 +96,11 @@ class Player:
     def hurt(self, amount, source_pos=None):
         if self.god or self.invulnerable or self.hp <= 0:
             return False
-        if "armor" in self.flags:   # Бронежилет: 40% урона поглощается (дробный остаток переносится на следующий удар)
-            total = amount * self.ARMOR_TAKEN + self._armor_carry
-            amount = int(total)
-            self._armor_carry = total - amount
+        if "armor" in self.flags and self.rng.random() < self.ARMOR_BLOCK_CHANCE:
+            # Бронежилет поглотил удар целиком: урона нет, но короткая неуязвимость есть (чтобы контактный урон не перебрасывал кубик каждый кадр)
+            self.iframes = self.IFRAMES
+            self.absorbed_hit = True
+            return False
         self.hp -= amount
         self.iframes = self.IFRAMES
         if source_pos is not None:

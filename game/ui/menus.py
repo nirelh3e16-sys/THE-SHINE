@@ -43,14 +43,24 @@ class Menu:
                 self.selected = (self.selected + 1) % len(self.entries)
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_e):
                 self.entries[self.selected][1]()
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            pos = event.pos_game
-            for i, (label, cb) in enumerate(self.entries):
-                near_x = pos.x > GAME_W - 230 if self.corner else abs(pos.x - GAME_W / 2) < 90
-                if abs(pos.y - self._y(i)) < 10 and near_x:
-                    self.selected = i
-                    cb()
-                    break
+        elif event.type == pygame.MOUSEMOTION and hasattr(event, "pos_game"):
+            i = self.index_at(event.pos_game)   # наведение курсора подсвечивает пункт
+            if i is not None:
+                self.selected = i
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hasattr(event, "pos_game"):
+            i = self.index_at(event.pos_game)
+            if i is not None:
+                self.selected = i
+                self.entries[i][1]()
+
+    def index_at(self, pos):
+        """Номер пункта под курсором (в игровых координатах) или None."""
+        half = min(11, self.step / 2) if not self.corner else 11
+        for i in range(len(self.entries)):
+            near_x = pos.x > GAME_W - 230 if self.corner else abs(pos.x - GAME_W / 2) < 120
+            if abs(pos.y - self._y(i)) < half and near_x:
+                return i
+        return None
 
     def _y(self, i):
         if self.corner:
@@ -78,13 +88,28 @@ class Menu:
                       "gold" if sel else "white", 14, "center")
 
 
-def draw_journal(surf, db, tab, owned, testimonies, scroll=0):
+# кнопки журнала: вкладки и «Закрыть» (клик и наведение мыши)
+JOURNAL_TAB_RECTS = (pygame.Rect(GAME_W // 2 - 128, 25, 120, 16), pygame.Rect(GAME_W // 2 + 8, 25, 120, 16))
+JOURNAL_CLOSE_RECT = pygame.Rect(GAME_W - 74, 6, 68, 16)
+
+
+def draw_button(surf, rect, label, hover=False, active=False, size=10):
+    """Простая кнопка: рамка и подпись; при наведении и у активной — золотая."""
+    on = hover or active
+    pygame.draw.rect(surf, (60, 44, 96) if on else (30, 22, 50), rect, border_radius=3)
+    pygame.draw.rect(surf, (255, 215, 90) if on else (70, 56, 100), rect, 1, border_radius=3)
+    draw_text(surf, label, rect.center, "gold" if on else "white", size, "center")
+
+
+def draw_journal(surf, db, tab, owned, testimonies, scroll=0, mouse=None):
     surf.fill((18, 12, 30))
     draw_text(surf, "ИНВЕНТАРЬ / ЖУРНАЛ", (GAME_W // 2, 8), "gold", 14, "midtop")
-    draw_text(surf, ("[ПРЕДМЕТЫ]" if tab == 0 else " ПРЕДМЕТЫ ") + "   " +
-              ("[СВИДЕТЕЛЬСТВА]" if tab == 1 else " СВИДЕТЕЛЬСТВА "), (GAME_W // 2, 28), "white", 11, "midtop")
+    for i, label in enumerate(("ПРЕДМЕТЫ", "СВИДЕТЕЛЬСТВА")):
+        r = JOURNAL_TAB_RECTS[i]
+        draw_button(surf, r, label, hover=bool(mouse and r.collidepoint(mouse)), active=tab == i, size=10)
+    draw_button(surf, JOURNAL_CLOSE_RECT, "Закрыть", hover=bool(mouse and JOURNAL_CLOSE_RECT.collidepoint(mouse)), size=10)
     draw_text(surf, "Q/E — вкладка, Tab/Esc — закрыть", (GAME_W // 2, GAME_H - 6), "grey", 9, "midbottom")
-    y = 46
+    y = 50
     if tab == 0:
         if not owned:
             draw_text(surf, "Пока ничего нет.", (40, y), "grey")

@@ -4,7 +4,7 @@ import random
 
 import pygame
 
-from .ui.menus import Menu, load_logo
+from .ui.menus import Menu, load_logo, draw_button
 from .settings import PUBLISHER, SPR_DIR
 from . import i18n
 from .i18n import LANGUAGE_NAMES
@@ -268,7 +268,7 @@ class EndScreen:
         self.game, self.play, self.won = game, play, won
         self.verdict = play.morality.verdict()
         self.t = 0.0
-        self.menu = Menu("", [("Новый забег", game.new_game), ("В меню", game.go_menu)])
+        self.menu = Menu("", [("Новый забег", game.new_game), ("В меню", game.go_menu)], top=215, step=16)   # те же координаты, что и при отрисовке
 
     def handle_event(self, event):
         self.menu.handle_event(event)
@@ -296,7 +296,7 @@ class EndScreen:
             draw_text(surf, "• " + TESTIMONIES[tid][0], (150, 150 + i * 12), "white", 10)
         for i, (label, _) in enumerate(self.menu.entries):
             sel = i == self.menu.selected
-            draw_text(surf, ("> " if sel else "  ") + label, (GAME_W // 2, 215 + i * 16), "gold" if sel else "white", 13, "center")
+            draw_text(surf, ("> " if sel else "  ") + label, (GAME_W // 2, self.menu._y(i)), "gold" if sel else "white", 13, "center")
 
 
 # --- концовки и титры ---
@@ -434,17 +434,66 @@ class CreditsState:
 
 
 class CharacterSelectState:
-    """Выбор персонажа: открытые доступны, закрытые показывают условие открытия."""
+    """Выбор персонажа: открытые доступны, закрытые показывают условие открытия.
+
+    Список слева прокручивается (колесо мыши, полоса справа от списка, клавиши) — как в бестиарии."""
+    ROW_TOP, ROW_STEP, ROW_H, VISIBLE = 38, 31, 28, 7
+    BAR = pygame.Rect(218, 38, 6, 7 * 31 - 3)          # дорожка полосы прокрутки
+    START_BTN = pygame.Rect(GAME_W // 2 - 92, GAME_H - 15, 88, 14)
+    BACK_BTN = pygame.Rect(GAME_W // 2 + 4, GAME_H - 15, 88, 14)
 
     def __init__(self, game):
         self.game = game
         self.ids = list(game.characters)
         self.unlocked = set(game.unlocked_chars())
         self.sel = max(0, self.ids.index(game.selected_char)) if game.selected_char in self.ids else 0
+        self.scroll = 0
+        self.hover = None          # строка под курсором
+        self.hover_btn = None      # "start" / "back"
+        self.dragging = False
+        self._keep_visible()
 
     # --- вспомогательное ---
+    @property
+    def max_scroll(self):
+        return max(0, len(self.ids) - self.VISIBLE)
+
+    def _keep_visible(self):
+        if self.sel < self.scroll:
+            self.scroll = self.sel
+        elif self.sel >= self.scroll + self.VISIBLE:
+            self.scroll = self.sel - self.VISIBLE + 1
+        self.scroll = max(0, min(self.scroll, self.max_scroll))
+
     def _row_rect(self, i):
-        return pygame.Rect(14, 38 + i * 31, 200, 28)
+        return pygame.Rect(14, self.ROW_TOP + (i - self.scroll) * self.ROW_STEP, 200, self.ROW_H)
+
+    def _row_at(self, pos):
+        for i in range(self.scroll, min(len(self.ids), self.scroll + self.VISIBLE)):
+            if self._row_rect(i).collidepoint(pos):
+                return i
+        return None
+
+    def _thumb(self):
+        """Бегунок полосы прокрутки (None, если всё помещается)."""
+        if self.max_scroll == 0:
+            return None
+        h = self.BAR.height
+        size = max(16, int(h * self.VISIBLE / len(self.ids)))
+        y = self.BAR.y + int((h - size) * self.scroll / self.max_scroll)
+        return pygame.Rect(self.BAR.x, y, self.BAR.width, size)
+
+    def _drag_to(self, y):
+        thumb = self._thumb()
+        if thumb is None:
+            return
+        span = self.BAR.height - thumb.height
+        frac = (y - self.BAR.y - thumb.height / 2) / max(1, span)
+        self.scroll = max(0, min(self.max_scroll, int(round(frac * self.max_scroll))))
+
+    def _move(self, d):
+        self.sel = (self.sel + d) % len(self.ids)
+        self._keep_visible()
 
     def _stats(self, char):
         st = self.game.data.items.stats(char["start_items"], char["mods"])
@@ -463,18 +512,36 @@ class CharacterSelectState:
             if event.key == pygame.K_ESCAPE:
                 self.game.go_menu()
             elif event.key in (pygame.K_UP, pygame.K_w, pygame.K_LEFT, pygame.K_a):
-                self.sel = (self.sel - 1) % len(self.ids)
+                self._move(-1)
             elif event.key in (pygame.K_DOWN, pygame.K_s, pygame.K_RIGHT, pygame.K_d):
-                self.sel = (self.sel + 1) % len(self.ids)
+                self._move(1)
             elif event.key in (pygame.K_RETURN, pygame.K_e, pygame.K_SPACE):
                 self._confirm()
+        elif event.type == pygame.MOUSEWHEEL:
+            self.scroll = max(0, min(self.max_scroll, self.scroll - event.y))
+        elif event.type == pygame.MOUSEMOTION and hasattr(event, "pos_game"):
+            pos = event.pos_game
+            if self.dragging:
+                self._drag_to(pos.y)
+            self.hover = self._row_at(pos)
+            self.hover_btn = "start" if self.START_BTN.collidepoint(pos) else "back" if self.BACK_BTN.collidepoint(pos) else None
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging = False
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hasattr(event, "pos_game"):
-            for i in range(len(self.ids)):
-                if self._row_rect(i).collidepoint(event.pos_game):
+            pos = event.pos_game
+            if self.START_BTN.collidepoint(pos):
+                self._confirm()
+            elif self.BACK_BTN.collidepoint(pos):
+                self.game.go_menu()
+            elif self.max_scroll and self.BAR.inflate(10, 0).collidepoint(pos):   # полоса прокрутки: клик и перетаскивание
+                self.dragging = True
+                self._drag_to(pos.y)
+            else:
+                i = self._row_at(pos)
+                if i is not None:
                     if i == self.sel:
                         self._confirm()
                     self.sel = i
-                    break
 
     def update(self, dt):
         pass
@@ -484,13 +551,23 @@ class CharacterSelectState:
         g = self.game
         surf.fill((18, 12, 32))
         draw_text(surf, "ВЫБОР ПЕРСОНАЖА", (GAME_W // 2, 8), "gold", 16, "midtop")
+        draw_button(surf, self.START_BTN, "Начать", hover=self.hover_btn == "start", size=10)
+        draw_button(surf, self.BACK_BTN, "Назад", hover=self.hover_btn == "back", size=10)
+        thumb = self._thumb()
+        if thumb is not None:   # полоса прокрутки списка
+            pygame.draw.rect(surf, (30, 22, 50), self.BAR, border_radius=3)
+            pygame.draw.rect(surf, (255, 215, 90) if self.dragging else (110, 90, 150), thumb, border_radius=3)
+        surf.set_clip(pygame.Rect(0, self.ROW_TOP - 2, 216, self.VISIBLE * self.ROW_STEP))   # карточки вне списка не рисуем
         for i, cid in enumerate(self.ids):
+            if not self.scroll <= i < self.scroll + self.VISIBLE:
+                continue
             char = g.characters[cid]
             rect = self._row_rect(i)
             locked = cid not in self.unlocked
             sel = i == self.sel
-            pygame.draw.rect(surf, (40, 28, 66) if sel else (26, 18, 44), rect, border_radius=4)
-            pygame.draw.rect(surf, (255, 215, 90) if sel else (80, 64, 110), rect, 1, border_radius=4)
+            hov = i == self.hover and not sel
+            pygame.draw.rect(surf, (40, 28, 66) if sel else (34, 24, 56) if hov else (26, 18, 44), rect, border_radius=4)
+            pygame.draw.rect(surf, (255, 215, 90) if sel else (170, 150, 110) if hov else (80, 64, 110), rect, 1, border_radius=4)
             icon = g.sprites.get("player_" + cid)
             icon = g.sprites.white("player_" + cid) if locked else icon
             if locked:
@@ -500,6 +577,7 @@ class CharacterSelectState:
             icon = pygame.transform.scale(icon, (max(1, int(icon.get_width() * scale)), max(1, int(icon.get_height() * scale))))
             surf.blit(icon, icon.get_rect(center=(rect.x + 18, rect.centery)))
             draw_text(surf, "???" if locked else char["name"], (rect.x + 40, rect.centery), "grey" if locked else ("gold" if sel else "white"), 12, "midleft")
+        surf.set_clip(None)
         # правая панель — подробности выбранного
         cid = self.ids[self.sel]
         char = g.characters[cid]
@@ -544,7 +622,6 @@ class CharacterSelectState:
         for i, item_id in enumerate(char["start_items"]):
             surf.blit(g.sprites.icon(item_id), (panel.x + 8, panel.y + 164 + i * 16))
             draw_text(surf, g.data.items.items[item_id].name, (panel.x + 28, panel.y + 164 + i * 16), "white", 10)
-        draw_text(surf, "Enter — начать, Esc — назад", (GAME_W // 2, GAME_H - 6), "grey", 9, "midbottom")
 
 
 class GraphicsSettingsState:

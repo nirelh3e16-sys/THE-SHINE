@@ -5,11 +5,13 @@
 import math
 
 BLOCK = 16.0
-RANGE = 25 * BLOCK          # дальность гейзера: 25 блоков
+RANGE = 25 * BLOCK          # дальность Крика: 25 блоков
+BALANCER_RANGE = 5 * BLOCK  # дальность Балансатора: 5 блоков
 CHARGE_TIME = 3.0           # Балансатор заряжается 3 секунды
 TICK = 0.1                  # как часто гейзер наносит урон тому, кто в нём стоит
 
-BALANCER = {"width": 14.0, "duration": 1.4, "damage_mult": 2.0, "turn_speed": 4.5, "recoil": 0.0}
+BALANCER = {"width": 14.0, "duration": 1.4, "damage_mult": 2.0, "turn_speed": 4.5, "recoil": 0.0,
+            "reach": BALANCER_RANGE}
 # Крик: ширина в 4 раза больше, держится дольше, бьёт сильнее, медленнее поворачивается и отбрасывает игрока назад
 SCREAM = {"width": BALANCER["width"] * 4, "duration": 3.0, "damage_mult": 5.0, "turn_speed": 2.2, "recoil": 120.0}
 

@@ -20,7 +20,7 @@ from .systems.events import apply_effects, can_choose
 from .systems.morality import Morality, TESTIMONIES
 from .ui.dialogue import DialogueBox
 from .ui.hud import Notifications, draw_hud
-from .ui.menus import Menu, draw_journal
+from .ui.menus import Menu, draw_journal, JOURNAL_TAB_RECTS, JOURNAL_CLOSE_RECT
 from .ui.text import draw_text
 from .world.dungeon import Dungeon, OPP
 from .world.room import Room, Prop, Pickup, CENTER
@@ -57,6 +57,7 @@ class PlayState:
         self.pause_menu = None
         self.overlay = False
         self.tab = 0
+        self.overlay_mouse = None   # позиция курсора для подсветки кнопок журнала
         self.trans = None
         self.dying = 0.0
         self.room_hit = False
@@ -566,6 +567,16 @@ class PlayState:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.paused = False
             return
+        if self.overlay and hasattr(event, "pos_game"):   # журнал: вкладки и «Закрыть» мышью
+            if event.type == pygame.MOUSEMOTION:
+                self.overlay_mouse = event.pos_game
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for i, r in enumerate(JOURNAL_TAB_RECTS):
+                    if r.collidepoint(event.pos_game):
+                        self.tab = i
+                if JOURNAL_CLOSE_RECT.collidepoint(event.pos_game):
+                    self.overlay = False
+            return
         if event.type != pygame.KEYDOWN:
             return
         k = event.key
@@ -922,6 +933,12 @@ class PlayState:
         """Небеса открыты, если игрок видел злую концовку (победа над Бесом)."""
         return "evil" in self.game.save.data.get("endings", [])
 
+    def hell_open(self):
+        """Разлом в Ад открыт, когда игрок видел обе концовки: хорошую (или секретную — она тоже победа над The Shine) и плохую.
+        Тогда разлом появляется после победы над The Shine в каждом забеге. Старый путь (все четыре свидетельства) тоже работает."""
+        endings = set(self.game.save.data.get("endings", []))
+        return bool(endings & {"good", "secret"}) and "bad" in endings or self.morality.secret_unlocked()
+
     def _finish_ending(self):
         kind = "true" if self.zone.get("final_boss") else ("secret" if self.secret_ready else "good")
         if kind == "secret":
@@ -1090,7 +1107,27 @@ class PlayState:
         self.dungeon.pos = pos
         self._swap_room(pos)
 
+    DEBUG_TOP, DEBUG_STEP = 28, 15
+
+    def _debug_index_at(self, pos, count):
+        for i in range(count):
+            if 40 <= pos.x <= GAME_W - 40 and self.DEBUG_TOP + i * self.DEBUG_STEP - 1 <= pos.y < self.DEBUG_TOP + (i + 1) * self.DEBUG_STEP - 1:
+                return i
+        return None
+
     def _debug_event(self, event):
+        if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN) and hasattr(event, "pos_game"):
+            entries = self._debug_entries()
+            i = self._debug_index_at(event.pos_game, len(entries))
+            if i is not None:
+                self.debug["sel"] = i
+                if event.type == pygame.MOUSEBUTTONDOWN and entries[i][2]:
+                    if event.button == 1:
+                        entries[i][2]()
+                elif event.type == pygame.MOUSEBUTTONDOWN and entries[i][1]:   # ЛКМ — больше, ПКМ — меньше
+                    if event.button in (1, 3):
+                        entries[i][1](1 if event.button == 1 else -1, bool(pygame.key.get_mods() & pygame.KMOD_SHIFT))
+            return
         if event.type != pygame.KEYDOWN:
             return
         entries = self._debug_entries()
@@ -1118,11 +1155,11 @@ class PlayState:
         surf.blit(veil, (0, 0))
         entries = self._debug_entries()
         _draw_text(surf, "ТЕСТ-МЕНЮ (F4 + T)", (GAME_W // 2, 8), "red", 13, "midtop")
-        y = 28
+        y = self.DEBUG_TOP
         for i, (label, _, _) in enumerate(entries):
             sel = i == self.debug["sel"]
             _draw_text(surf, ("> " if sel else "  ") + label, (60, y), "gold" if sel else "white", 11)
-            y += 15
+            y += self.DEBUG_STEP
         _draw_text(surf, "Тест-забег не сохраняется и не даёт прогресса. ↑/↓ — выбор, Enter — применить",
                    (GAME_W // 2, GAME_H - 6), "grey", 9, "midbottom")
 
@@ -1181,6 +1218,11 @@ class PlayState:
             p.aim = aim.normalize()
         room.update_dynamic(dt, p.pos)
         p.update(dt, move, room, None if p.gravity_immune else room.drift())
+        if p.absorbed_hit:   # Бронежилет поглотил удар
+            p.absorbed_hit = False
+            self.game.effects.burst(p.pos, (170, 200, 235), 8, 90, 0.3, 2)
+            self.notes.push("Бронежилет поглотил удар!", "gold", 1.5)
+            self.sfx("hit")
         if p.needles.update(dt, p.pos.x, p.pos.y) and p.hurt(p.needles.stab_damage()):   # иголки колют при каждом движении
             self._on_player_hurt()
         if self.pending_cutscene and (self.zone.get("boss_cutscene") == "god" or p.pos.distance_to(CENTER) < 28):
@@ -1497,7 +1539,7 @@ class PlayState:
             room.props.append(Prop("gates", (CENTER.x, CENTER.y), f"{room.ns}{room.spec.pos}:gates"))
             if self.heaven_open():   # злая концовка открыта: рядом с вратами появляется портал на Небеса
                 room.props.append(Prop("sky_portal", (CENTER.x + 70, CENTER.y), f"{room.ns}{room.spec.pos}:sky"))
-            if self.morality.secret_unlocked():   # секретная концовка открыта: в стене появляется дверь с разломом в Ад
+            if self.hell_open():   # открыты хорошая и плохая концовки: в стене появляется дверь с разломом в Ад
                 room.props.append(Prop("rift", (CENTER.x - 70, CENTER.y), f"{room.ns}{room.spec.pos}:rift"))
             return
         items = self.dungeon.item_for_room.get(room.spec.pos, [])
@@ -1530,6 +1572,7 @@ class PlayState:
         if self.zone.get("arena"):
             if self.secret_ready:
                 self.notes.push("Его силуэт дрогнул. В голосе было что-то знакомое...", "gold", 6)
+            if self.hell_open():
                 self.notes.push("В стене открылась дверь. За ней — разлом, в котором виден ад.", "red", 6)
             if self.heaven_open():
                 self.notes.push("Рядом с вратами раскрылся белый портал. Куда он ведёт — на небеса?", "gold", 6)
@@ -1664,7 +1707,8 @@ class PlayState:
         if self.dialogue:
             self.dialogue.draw(surf)
         if self.overlay:
-            draw_journal(surf, self.db, self.tab, self.player.inv.items, self.morality.all_testimonies())
+            draw_journal(surf, self.db, self.tab, self.player.inv.items, self.morality.all_testimonies(),
+                         mouse=self.overlay_mouse)
         if self.paused:
             veil = pygame.Surface((GAME_W, GAME_H), pygame.SRCALPHA)
             veil.fill((0, 0, 0, 160))
