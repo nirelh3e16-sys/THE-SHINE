@@ -8,6 +8,7 @@ import pygame
 from .entities.miniboss import MINIBOSSES, create_miniboss
 from .settings import GAME_W, GAME_H
 from .systems.morality import TESTIMONIES
+from .ui.menus import draw_button
 from .ui.text import draw_text, wrap
 from .world.zones import ZONES, ZONE_ORDER
 
@@ -109,6 +110,10 @@ class BestiaryState:
         self.categories = build_entries(game.data.items, game.data.enemies, game.save.data)
         self.tab, self.sel, self.scroll = 0, [0] * len(self.categories), [0] * len(self.categories)
         self._img_cache = {}
+        self.hover_tab = self.hover_row = None
+        self.hover_back = False
+
+    BACK_RECT = pygame.Rect(GAME_W - 70, GAME_H - 16, 62, 14)
 
     @property
     def entries(self):
@@ -144,8 +149,18 @@ class BestiaryState:
                 self._move(1)
         elif event.type == pygame.MOUSEWHEEL:
             self._move(-event.y)
+        elif event.type == pygame.MOUSEMOTION and hasattr(event, "pos_game"):
+            pos = event.pos_game
+            self.hover_back = self.BACK_RECT.collidepoint(pos)
+            self.hover_tab = next((i for i in range(len(self.categories)) if self._tab_rect(i).collidepoint(pos)), None)
+            row = int((pos.y - self.LIST_Y) // self.ROW_H)
+            in_list = self.LIST_X <= pos.x <= 178 and 0 <= row < self.ROWS and self.scroll[self.tab] + row < len(self.entries)
+            self.hover_row = row if in_list else None
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = getattr(event, "pos_game", pygame.Vector2(event.pos))
+            if self.BACK_RECT.collidepoint(pos.x, pos.y):
+                self.game.go_menu()
+                return
             for i in range(len(self.categories)):
                 if self._tab_rect(i).collidepoint(pos.x, pos.y):
                     self.tab = i
@@ -188,10 +203,11 @@ class BestiaryState:
         for i, (name, group) in enumerate(self.categories):
             r = self._tab_rect(i)
             sel = i == self.tab
-            pygame.draw.rect(surf, (60, 44, 96) if sel else (30, 22, 50), r)
-            pygame.draw.rect(surf, (255, 215, 90) if sel else (70, 56, 100), r, 1)
+            hov = i == self.hover_tab and not sel
+            pygame.draw.rect(surf, (60, 44, 96) if sel else (44, 32, 72) if hov else (30, 22, 50), r)
+            pygame.draw.rect(surf, (255, 215, 90) if sel else (170, 150, 110) if hov else (70, 56, 100), r, 1)
             draw_text(surf, f"{name} {sum(1 for e in group if e['found'])}/{len(group)}", r.center,
-                      "gold" if sel else "grey", 9, "center")
+                      "gold" if sel else "white" if hov else "grey", 9, "center")
         group = self.entries
         pygame.draw.rect(surf, (26, 18, 44), (self.LIST_X - 2, self.LIST_Y - 3, 176, self.ROWS * self.ROW_H + 4))
         top = self.scroll[self.tab]
@@ -201,6 +217,8 @@ class BestiaryState:
             sel = idx == self.sel[self.tab]
             if sel:
                 pygame.draw.rect(surf, (72, 54, 116), (self.LIST_X - 1, y - 1, 174, self.ROW_H - 1))
+            elif row == self.hover_row:
+                pygame.draw.rect(surf, (48, 36, 80), (self.LIST_X - 1, y - 1, 174, self.ROW_H - 1))
             icon = self._picture(entry, 14)
             surf.blit(icon, icon.get_rect(center=(self.LIST_X + 9, y + 7)))
             draw_text(surf, entry["name"] if entry["found"] else "???", (self.LIST_X + 22, y + 1),
@@ -212,7 +230,8 @@ class BestiaryState:
             pygame.draw.rect(surf, (90, 74, 130), (self.LIST_X + 171, y, 3, bar))
         if group:
             self._draw_detail(surf, group[self.sel[self.tab]])
-        draw_text(surf, "←/→ вкладка   ↑/↓ запись   Esc назад", (GAME_W // 2, GAME_H - 5), "grey", 9, "midbottom")
+        draw_text(surf, "←/→ вкладка   ↑/↓ запись   Esc назад", (GAME_W // 2 - 30, GAME_H - 5), "grey", 9, "midbottom")
+        draw_button(surf, self.BACK_RECT, "Назад", hover=self.hover_back, size=9)
 
     def _draw_detail(self, surf, entry):
         x0, y0, w = 192, 46, GAME_W - 200
