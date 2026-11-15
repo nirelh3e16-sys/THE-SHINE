@@ -715,12 +715,16 @@ class WeaponTests(unittest.TestCase):
 
     def test_character_sprites_build(self):
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-        from game.sprites import make_player_sprite
+        from game.sprites import _hero_frames
         import json
         from game.settings import DATA_DIR
         with open(DATA_DIR / "characters.json", encoding="utf-8") as f:
             chars = json.load(f)["characters"]
-        sizes = {c["id"]: make_player_sprite(c["id"], c["scale"]).get_size() for c in chars}
+        sizes = {}
+        for c in chars:
+            idle, walk = _hero_frames(c["id"])
+            self.assertEqual(len(walk), 4)
+            sizes[c["id"]] = (idle.w, idle.h)
         self.assertGreater(sizes["tom"][0], sizes["rob"][0])
 
     def test_player_traits_and_hitbox(self):
@@ -860,10 +864,12 @@ class HellTests(unittest.TestCase):
 
     def test_imp_sprites_have_same_size_as_shine_style(self):
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
-        from game.sprites import make_imp_boss, make_shine, IMP_IRIS
-        sizes = {make_imp_boss(v).get_size() for v in (1, 2, 3)}
+        from game.sprites import IMP_IRIS
+        from game.art.bosses import imp_boss, shine
+        sizes = {(c.w, c.h) for v in (1, 2, 3) for c in [imp_boss(0, v).outlined()]}
         self.assertEqual(len(sizes), 1)
-        self.assertEqual(sizes, {make_shine(1).get_size()})     # тот же размер и форма: глаз с крыльями
+        shine_c = shine(0, 1).outlined()
+        self.assertEqual(sizes, {(shine_c.w, shine_c.h)})     # тот же размер и форма: глаз с крыльями
         self.assertEqual(set(IMP_IRIS), {1, 2, 3})
 
     def test_arena_clamps_player_and_enemies_to_platform(self):
