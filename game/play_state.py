@@ -13,6 +13,7 @@ from .systems import characters as char_logic
 from .daycycle import effective_state
 from .graphics_settings import NIGHT_MULT
 from .systems.anchor import Anchor, FULL_CHARGE
+from .systems.artifacts import ArtifactState, ARTIFACT_ACTIVES
 from .systems.geyser import Geyser, Charge
 from .systems.needles import Needles
 from .systems.statsview import build_stat_rows
@@ -47,6 +48,8 @@ class PlayState:
         char_id = snapshot.get("char", char_logic.DEFAULT_ID) if snapshot else game.selected_char
         self.char = game.characters.get(char_id) or game.characters[char_logic.DEFAULT_ID]
         self.player = Player(self.db, self.char)
+        self.art = ArtifactState(self)       # артефакты 1.1.0: волны, молнии, щиты, духи, проклятия
+        self.player.art = self.art
         self.morality = Morality(self.seed, game.save.data["testimonies"])
         self.notes = Notifications()
         self.pshots, self.eshots = [], []
@@ -84,6 +87,7 @@ class PlayState:
         self.secret_ready = False
         self.cheated = False       # тест-меню использовалось: результаты забега не сохраняются
         self.debug = None
+        self.console = None        # консоль разработчика (F4 + 3): не включает тест-режим
         self.day_clock = float(snapshot.get("day", 0.0)) if snapshot else 0.0   # визуальное время суток: забег начинается на рассвете
         self.pending_cutscene = False   # Ад: сцена с Бесом начнётся, когда игрок дойдёт до центра комнаты
         self.chain_end = None
@@ -96,6 +100,7 @@ class PlayState:
         self._setup_zone(snapshot["zone"] if snapshot else 0, snapshot.get("zone_pool") if snapshot else None)
         if snapshot:
             self._restore(snapshot)
+            self.art.restore(snapshot.get("art"))
         self.room = self.get_room(self.dungeon.pos)
         self.player.pos = pygame.Vector2(CENTER)
         self.player.recompute()
@@ -124,6 +129,7 @@ class PlayState:
         self.stack = []
         self.ctx_seed = self.zone_seed
         self.ns = f"{self.zone['id']}:"
+        self.art.on_zone_change()   # эффекты «до конца этажа» сбрасываются
 
     # --- вспомогательное ---
     def hp_scale(self):
@@ -224,7 +230,14 @@ class PlayState:
             return
         item = self.db.items[inv.active_id]
         kind, p, fx = item.active["type"], self.player, self.game.effects
-        if kind == "nuke":
+        if item.id in self.art.disabled:   # «Цена бессмертия»: предмет временно потерял силу
+            self.notes.push("Предмет потерял силу до конца этажа.", "grey", 2.5)
+            return
+        if kind in ARTIFACT_ACTIVES:
+            if not self.art.use_active(kind):
+                return
+            inv.start_cooldown(item.active["cooldown"])
+        elif kind == "nuke":
             for e in self.room.enemies:
                 if not e.dead:
                     e.take_damage(item.active["damage"], pygame.Vector2(e.pos - p.pos), 200)
@@ -242,7 +255,10 @@ class PlayState:
             if p.hp >= p.max_hp:
                 self.notes.push("Здоровье и так полное", "grey")
                 return
-            p.hp = p.max_hp
+            if "grail" in p.flags:   # цена Святого Грааля: лечение вполовину слабее
+                p.hp = min(p.max_hp, p.hp + (p.max_hp - p.hp + 1) // 2)
+            else:
+                p.hp = p.max_hp
             fx.flash((120, 255, 150), 0.3)
             fx.burst(p.pos, (120, 255, 150), 18, 90, 0.6, 3)
             self.sfx("pickup")
@@ -482,7 +498,7 @@ class PlayState:
             "taken": sorted(self.taken), "hp": p.hp, "coins": p.coins, "items": list(p.inv.items),
             "run_mods": [list(m) for m in p.run_mods], "sins": self.morality.run_sins,
             "testimonies": self.morality.run_testimonies, "boss_dead": self.boss_dead,
-            "photo": self.photo_count, "rooms_cleared": self.rooms_cleared,
+            "photo": self.photo_count, "rooms_cleared": self.rooms_cleared, "art": self.art.snapshot(),
         }
 
     def save_snapshot(self):
@@ -534,6 +550,8 @@ class PlayState:
 
     # --- события ввода ---
     def toggle_stats(self):
+        if self.console is not None:
+            return
         self.stats_open = not self.stats_open
 
     def _draw_stats(self, surf):
@@ -549,6 +567,9 @@ class PlayState:
         _draw_text(surf, "Esc или F4 + 2 — закрыть", (GAME_W // 2, GAME_H - 6), "grey", 9, "midbottom")
 
     def handle_event(self, event):
+        if self.console is not None:
+            self.console.handle_event(event)
+            return
         if self.stats_open:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.stats_open = False
@@ -593,6 +614,7 @@ class PlayState:
         elif k in (pygame.K_SPACE, pygame.K_LSHIFT, pygame.K_RSHIFT):
             if self.trans is None and self.player.start_dodge():
                 self.sfx("dodge")
+                self.art.on_dash()
         elif k == pygame.K_q:
             self.use_active()
         elif k == pygame.K_e:
@@ -608,7 +630,7 @@ class PlayState:
         ])
 
     def on_focus_lost(self):
-        if not self.paused and not self.dialogue and self.dying <= 0:
+        if self.console is None and not self.paused and not self.dialogue and self.dying <= 0:
             self.open_pause()
 
     def _save_quit(self):
@@ -636,6 +658,7 @@ class PlayState:
             self.taken.add(prop.key)
             if prop.price:
                 self.sfx("buy")
+                self.art.on_purchase(prop.price)
             self.give_item(prop.item_id)
         elif prop.kind == "card":
             self.room.props.remove(prop)
@@ -650,6 +673,7 @@ class PlayState:
                 self.player.coins -= prop.price
                 self.player.heal(2)
                 self.sfx("buy")
+                self.art.on_purchase(prop.price)
                 self.room.props.remove(prop)
                 self.taken.add(prop.key)
         elif prop.kind == "house":
@@ -833,6 +857,7 @@ class PlayState:
     def _enter_room(self):
         """Вход в комнату. Босс Ада появляется не сразу: сначала игрок должен дойти до центра."""
         room = self.room
+        self.art.on_room_enter()
         if room.kind == "boss" and not room.cleared and self.zone.get("boss_cutscene") and room.arena is None:
             room.visited = True
             self.pending_cutscene = True
@@ -1004,6 +1029,8 @@ class PlayState:
 
     # --- тест-меню (F4 + T) ---
     def toggle_debug(self):
+        if self.console is not None:
+            return
         if self.debug is None:
             self.debug = {"sel": 0}
         else:
@@ -1054,9 +1081,11 @@ class PlayState:
         self.player.debug_damage = self.player.debug_max_hp = None
         self.player.recompute()
 
-    def debug_goto_zone(self, index):
-        """Переход в локацию из тест-меню (финальная арена начинается сразу с боя)."""
-        self.cheated = True
+    def debug_goto_zone(self, index, mark=True):
+        """Переход в локацию из тест-меню или консоли (финальная арена начинается сразу с боя).
+        mark=False (консоль): забег не помечается как тест-забег."""
+        if mark:
+            self.cheated = True
         self.dialogue = self.on_dialogue_end = self.after_dialogue = self.trans = None
         self.cutscene, self.chain = False, []
         self.pshots.clear()
@@ -1069,11 +1098,12 @@ class PlayState:
             self._start_fight()
         else:
             self._enter_room()
-        self.notes.push(f"ТЕСТ: {self.zone['name']}", "red", 3)
+        self.notes.push(f"ТЕСТ: {self.zone['name']}" if mark else self.zone["name"], "red" if mark else "gold", 3)
         self.debug = None
 
-    def debug_goto_boss(self):
-        self.cheated = True
+    def debug_goto_boss(self, mark=True):
+        if mark:
+            self.cheated = True
         while self.stack:
             self.leave_house()
         pos = next(p for p, s in self.dungeon.specs.items() if s.kind == "boss")
@@ -1082,9 +1112,10 @@ class PlayState:
         self._swap_room(pos)
         self.debug = None
 
-    def debug_goto_miniboss(self):
-        """Тест-меню: комната мини-босса текущей локации (в Пригороде — дом Домовладельца)."""
-        self.cheated = True
+    def debug_goto_miniboss(self, mark=True):
+        """Тест-меню/консоль: комната мини-босса текущей локации (в Пригороде — дом Домовладельца)."""
+        if mark:
+            self.cheated = True
         self.debug = None
         while self.stack:
             self.leave_house()
@@ -1106,6 +1137,31 @@ class PlayState:
         self.dungeon.visited.add(pos)
         self.dungeon.pos = pos
         self._swap_room(pos)
+
+    def goto_room_kind(self, kind):
+        """Консоль: первая комната указанного вида (start, shop, treasure, event, boss...) в текущей локации. False — такой нет."""
+        pos = next((q for q, sp in sorted(self.dungeon.specs.items()) if sp.kind == kind), None)
+        if pos is None:
+            return False
+        while self.stack:
+            self.leave_house()
+        self.dungeon.visited.add(pos)
+        self.dungeon.pos = pos
+        self._swap_room(pos)
+        return True
+
+    # --- консоль разработчика (F4 + 3) ---
+    def toggle_console(self):
+        """Открыть/закрыть консоль. В отличие от тест-меню она не включает тест-режим (забег засчитывается)."""
+        if self.console is None:
+            if self.dying > 0 or self.trans or self.dialogue or self.paused or self.cards is not None or self.stats_open:
+                return
+            from .console import DevConsole
+            self.console = DevConsole(self)
+            pygame.key.set_repeat(350, 35)   # удержание Backspace и стрелок
+        else:
+            self.console = None
+            pygame.key.set_repeat(0)
 
     DEBUG_TOP, DEBUG_STEP = 28, 15
 
@@ -1170,7 +1226,7 @@ class PlayState:
         self.notes.update(dt)
         if self.dying <= 0 and not self.cutscene:
             self.game.audio.music.play(self._desired_track())
-        self.game.audio.update_glitch(self.ui_glitch() and not (self.paused or self.overlay or self.debug), dt)
+        self.game.audio.update_glitch(self.ui_glitch() and not (self.paused or self.overlay or self.debug or self.console), dt)
         if self.dialogue:
             if self.dialogue.done:
                 choice, cb = self.dialogue.choice, self.after_dialogue
@@ -1181,7 +1237,8 @@ class PlayState:
                     fn, self.on_dialogue_end = self.on_dialogue_end, None
                     fn()
             return
-        if self.paused or self.overlay or self.debug is not None or self.cards is not None or self.stats_open:
+        if self.paused or self.overlay or self.debug is not None or self.cards is not None or self.stats_open \
+                or self.console is not None:
             return
         if self.dying > 0:
             self.dying -= dt
@@ -1221,14 +1278,17 @@ class PlayState:
         if p.absorbed_hit:   # Бронежилет поглотил удар
             p.absorbed_hit = False
             self.game.effects.burst(p.pos, (170, 200, 235), 8, 90, 0.3, 2)
-            self.notes.push("Бронежилет поглотил удар!", "gold", 1.5)
+            self.notes.push(self.art.pop_absorb_msg() or "Бронежилет поглотил удар!", "gold", 1.5)
             self.sfx("hit")
+        if p.landed:   # полёт закончился: цена Крыльев
+            p.landed = False
+            self.art.on_land()
         if p.needles.update(dt, p.pos.x, p.pos.y) and p.hurt(p.needles.stab_damage()):   # иголки колют при каждом движении
             self._on_player_hurt()
         if self.pending_cutscene and (self.zone.get("boss_cutscene") == "god" or p.pos.distance_to(CENTER) < 28):
             self._start_boss_cutscene()   # Ад: игрок дошёл до центра комнаты; Небеса: Бог говорит сразу
             return
-        mouse_down = pygame.mouse.get_pressed()[0]
+        mouse_down = pygame.mouse.get_pressed()[0] and not self.art.attack_blocked()
         if "balancer" not in p.flags:
             self.balancer_charge.cancel()
         if "balancer" in p.flags:   # Балансатор заменяет обычную стрельбу
@@ -1240,7 +1300,7 @@ class PlayState:
             self.anchor.cancel_orbit()
             if mouse_down and p.shoot_cd <= 0 and p.dodge_t <= 0:
                 if len(self.pshots) < self.cfg["max_player_projectiles"]:
-                    self.pshots.extend(combat.build_player_shots(p, p.aim))
+                    self.pshots.extend(self.art.on_shot(combat.build_player_shots(p, p.aim), p.aim))
                     self.sfx("shoot")
                 p.shoot_cd = p.stats["fire_delay"]
         self._update_geysers(dt)
@@ -1248,6 +1308,7 @@ class PlayState:
         self._update_thorns(dt)
         self._update_imp(dt)
         self._update_grenades(dt)
+        self.art.update(dt)
         # враги и снаряды
         scale = 0.0 if self.freeze_t > 0 else (0.45 if self.slow_t > 0 else 1.0)
         edt = dt * scale
@@ -1258,9 +1319,13 @@ class PlayState:
             if dormant:   # Небеса: стражи стоят смирно, пока кого-нибудь не тронут
                 e.idle(edt)
                 continue
+            if getattr(e, "frozen_t", 0.0) > 0:   # заморожен или окаменел
+                e.frozen_t -= dt
+                e.idle(edt)
+                continue
             if drift.length_squared() and e.spawn_t <= 0 and not getattr(e, "is_boss", False):
                 e.pos += drift * edt
-            e.update(edt, room, p, self.enemy_shoot)
+            e.update(edt * self.art.enemy_speed(e), room, self.art.target_for(e, p), self.enemy_shoot)
         if dormant and any(e.provoked for e in room.enemies):
             room.aggro = True   # тронули одного — бой начинают все
             self.notes.push("Небесная стража проснулась!", "red", 3)
@@ -1295,11 +1360,13 @@ class PlayState:
         room.notices.clear()
         for h in room.hazards:
             h.update(edt)
-            if h.active and h.hits(p.pos, p.RADIUS) and p.hurt(h.damage, h.center):
+            if h.active and h.hits(p.pos, p.RADIUS) and not self.art.hazard_immune(h) \
+                    and p.hurt(h.damage + self.art.hazard_extra(h), h.center):
                 self._on_player_hurt()
         room.hazards = [h for h in room.hazards if not h.dead]
         for rect, dmg in room.damage_zones:
-            if circle_rect_overlap(p.pos, p.RADIUS, rect) and p.hurt(dmg, pygame.Vector2(rect.center)):
+            if circle_rect_overlap(p.pos, p.RADIUS, rect) and not self.art.zone_immune(rect) \
+                    and p.hurt(dmg + (0 if self.art.zone_immune(rect) else self.art.hazard_extra(rect)), pygame.Vector2(rect.center)):
                 self._on_player_hurt()
         room.damage_zones.clear()
         self._collisions()
@@ -1373,6 +1440,7 @@ class PlayState:
 
     def _on_player_hurt(self):
         self._boss_comment("hurt")
+        self.art.on_hurt()
         self._imp_on_hurt()
         self.room_hit = True
         self.sfx("hurt")
@@ -1393,6 +1461,7 @@ class PlayState:
                     if e.take_damage(pr.damage, pr.vel, pr.knockback):
                         fx.burst(pr.pos, (255, 255, 200), 4, 70, 0.25)
                         self.sfx("hit")
+                        self.art.on_hit(pr, e)
                         if pr.kind == "thorn":   # колючка застревает во враге и ранит его при каждом его движении
                             if getattr(e, "_thorns", None) is None:
                                 e._thorns = Needles()
@@ -1416,6 +1485,9 @@ class PlayState:
                 continue
             if room.dormant:   # спящего можно только задеть: он не ранит, но просыпается вся стража
                 e.provoked = True
+                continue
+            self.art.on_contact(e)   # Терновый венец
+            if getattr(e, "frozen_t", 0.0) > 0 or self.art.invis_t > 0:   # замороженный враг не ранит
                 continue
             if p.hurt(e.contact, e.pos):
                 self._on_player_hurt()
@@ -1462,12 +1534,14 @@ class PlayState:
         if not self.cheated:   # записи бестиария открываются победой (тест-забег прогресса не даёт)
             self.game.record_defeat(("boss:" + e.kind) if getattr(e, "is_boss", False) else e.kind)
         self.player.inv.register_kill()
+        self.art.on_kill(e)
+        self.art.kill_loot(e)
         fx = self.game.effects
         fx.burst(e.pos, (255, 255, 255), 12, 120, 0.5, 3)
         fx.burst(e.pos, (130, 240, 90), 8, 80, 0.5, 2)
         self.sfx("hit")
         luck = max(0.0, self.player.stats["luck"])
-        if random.random() < e.coin_chance + luck * 0.03:
+        if random.random() < e.coin_chance + luck * 0.03 + self.art.coin_bonus():
             from .world.room import Pickup
             item_id = self._channel_loot_item() if "channel_loot" in self.player.flags else None
             if item_id:   # Старый пульт + Старый телевизор: вместо монеты выпадает случайный предмет
@@ -1544,12 +1618,25 @@ class PlayState:
             return
         items = self.dungeon.item_for_room.get(room.spec.pos, [])
         key = f"{room.ns}{room.spec.pos}:r"
-        if items and key not in self.taken:
+        charon = None if silent else self.art.charon_roll()   # Монета Харона: награда удваивается или пропадает
+        if charon == "fail":
+            from .world.room import Pickup
+            for _ in range(3):
+                room.pickups.append(Pickup("coin", CENTER, 1))
+            self.notes.push("Монета Харона заняла место награды.", "red", 4)
+        elif items and key not in self.taken:
             room.props.append(Prop("pedestal", (CENTER.x - 40, CENTER.y), key, item_id=items[0]))
+        if charon == "ok":
+            extra_key = f"{room.ns}{room.spec.pos}:charon"
+            pool = [i for i in self.zone_pool if i not in self.player.inv.items and i not in items]
+            if pool and extra_key not in self.taken:
+                room.props.append(Prop("pedestal", (CENTER.x, CENTER.y - 40), extra_key, item_id=random.choice(pool)))
+                self.notes.push("Монета Харона: дополнительная награда!", "gold", 4)
         room.props.append(Prop("portal", (CENTER.x + 40, CENTER.y), f"{room.ns}{room.spec.pos}:portal"))
 
     def on_boss_dead(self, boss):
         self.boss_dead = True
+        self.art.on_boss_dead(boss)
         self.eshots.clear()
         self.game.effects.flash((255, 255, 255), 0.6)
         self.game.effects.shake(6, 0.6)
@@ -1622,6 +1709,7 @@ class PlayState:
                     self.notes.push("Фотография проявилась: ты спишь в своей спальне.", "gold", 5)
                     self.player.heal(2)
                     self.sfx("story")
+            self.art.on_room_clear()
             if room.kind != "boss":
                 self.save_snapshot()
 
@@ -1720,6 +1808,8 @@ class PlayState:
             self._draw_stats(surf)
         if self.debug is not None:
             self._draw_debug(surf)
+        if self.console is not None:
+            self.console.draw(surf)
 
     # --- освещение, тени, время суток ---
     def light_state(self):
@@ -1797,6 +1887,7 @@ class PlayState:
     def _draw_extras(self, surf, off, sprites):
         """Якорь с цепью, летящие гранаты, взрывы и компактный бес."""
         p = self.player
+        self.art.draw(surf, off, sprites)
         if "anchor" in p.flags:
             a = self.anchor
             apos = pygame.Vector2(a.pos) if a.state != "idle" else p.pos + pygame.Vector2(12, 4)

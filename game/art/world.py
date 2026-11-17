@@ -250,6 +250,10 @@ def door(w, h, orient, locked, base, sky=False, kind="fence"):
 
 # ---------- иконки предметов (12x12 -> 14x14) ----------
 def icon(kind, color):
+    from .artifact_icons import draw as draw_artifact   # артефакты 1.1.0 рисуются в отдельном модуле
+    art = draw_artifact(kind, color)
+    if art is not None:
+        return art
     c = Canvas(12, 12)
     col = tuple(color)
     A = lambda *a, **k: c.R(*a, **k)
