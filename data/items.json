@@ -2,6 +2,7 @@
  "items": [
   {
    "id": "radioactive_burger",
+   "num": 1,
    "name": "Радиоактивный гамбургер",
    "icon": "burger",
    "color": [
@@ -22,6 +23,7 @@
   },
   {
    "id": "broom",
+   "num": 2,
    "name": "Веник",
    "icon": "broom",
    "color": [
@@ -46,6 +48,7 @@
   },
   {
    "id": "old_tv",
+   "num": 3,
    "name": "Старый телевизор",
    "icon": "tv",
    "color": [
@@ -61,6 +64,7 @@
   },
   {
    "id": "half_nuke",
+   "num": 4,
    "name": "Половина ядерной бомбы",
    "icon": "bomb",
    "color": [
@@ -79,6 +83,7 @@
   },
   {
    "id": "shine_feather",
+   "num": 5,
    "name": "Перо The Shine",
    "icon": "feather",
    "color": [
@@ -99,6 +104,7 @@
   },
   {
    "id": "cracked_mask",
+   "num": 6,
    "name": "Треснувшая маска",
    "icon": "mask",
    "color": [
@@ -121,6 +127,7 @@
   },
   {
    "id": "rusty_revolver",
+   "num": 7,
    "name": "Ржавый револьвер",
    "icon": "revolver",
    "color": [
@@ -149,6 +156,7 @@
   },
   {
    "id": "toy_soldier",
+   "num": 8,
    "name": "Игрушечный солдатик",
    "icon": "soldier",
    "color": [
@@ -164,6 +172,7 @@
   },
   {
    "id": "faulty_compass",
+   "num": 9,
    "name": "Неисправный компас",
    "icon": "compass",
    "color": [
@@ -179,6 +188,7 @@
   },
   {
    "id": "broken_clock",
+   "num": 10,
    "name": "Сломанные часы",
    "icon": "clock",
    "color": [
@@ -194,6 +204,7 @@
   },
   {
    "id": "empty_photo",
+   "num": 11,
    "name": "Пустая фотография",
    "icon": "photo",
    "color": [
@@ -209,6 +220,7 @@
   },
   {
    "id": "black_halo",
+   "num": 12,
    "name": "Чёрный нимб",
    "icon": "halo",
    "color": [
@@ -230,6 +242,7 @@
   },
   {
    "id": "pressure_kettle",
+   "num": 13,
    "name": "Чайник под давлением",
    "icon": "kettle",
    "color": [
@@ -252,6 +265,7 @@
   },
   {
    "id": "garden_gnome",
+   "num": 14,
    "name": "Садовый гном",
    "icon": "gnome",
    "color": [
@@ -274,6 +288,7 @@
   },
   {
    "id": "mail_bundle",
+   "num": 15,
    "name": "Пачка непрочитанных писем",
    "icon": "mail",
    "color": [
@@ -296,6 +311,7 @@
   },
   {
    "id": "baby_monitor",
+   "num": 16,
    "name": "Радионяня",
    "icon": "monitor",
    "color": [
@@ -318,6 +334,7 @@
   },
   {
    "id": "axe",
+   "num": 17,
    "name": "Топор",
    "icon": "axe",
    "color": [
@@ -346,6 +363,7 @@
   },
   {
    "id": "shotgun",
+   "num": 18,
    "name": "Дробовик",
    "icon": "shotgun",
    "color": [
@@ -370,6 +388,7 @@
   },
   {
    "id": "grenade",
+   "num": 19,
    "name": "Граната",
    "icon": "grenade",
    "color": [
@@ -389,6 +408,7 @@
   },
   {
    "id": "medkit",
+   "num": 20,
    "name": "Аптечка",
    "icon": "medkit",
    "color": [
@@ -407,6 +427,7 @@
   },
   {
    "id": "anchor",
+   "num": 21,
    "name": "Якорь",
    "icon": "anchor",
    "color": [
@@ -422,6 +443,7 @@
   },
   {
    "id": "angel_wings",
+   "num": 22,
    "name": "Крылья ангела",
    "icon": "wings",
    "color": [
@@ -438,6 +460,7 @@
   },
   {
    "id": "bat",
+   "num": 23,
    "name": "Бита",
    "icon": "bat",
    "color": [
@@ -466,6 +489,7 @@
   },
   {
    "id": "smg",
+   "num": 24,
    "name": "Автомат",
    "icon": "smg",
    "color": [
@@ -494,6 +518,7 @@
   },
   {
    "id": "broken_phone",
+   "num": 25,
    "name": "Сломанный телефон",
    "icon": "phone",
    "color": [
@@ -511,6 +536,7 @@
   },
   {
    "id": "compact_imp",
+   "num": 26,
    "name": "Компактный бес",
    "icon": "impmini",
    "color": [
@@ -526,6 +552,7 @@
   },
   {
    "id": "thorn_cannon",
+   "num": 27,
    "name": "Колючка-пушка",
    "icon": "thorn",
    "color": [
@@ -542,6 +569,7 @@
   },
   {
    "id": "old_remote",
+   "num": 28,
    "name": "Старый пульт",
    "icon": "remote",
    "color": [
@@ -558,6 +586,7 @@
   },
   {
    "id": "kevlar_vest",
+   "num": 29,
    "name": "Бронежилет",
    "icon": "vest",
    "color": [
@@ -574,6 +603,7 @@
   },
   {
    "id": "balancer",
+   "num": 30,
    "name": "Балансатор",
    "icon": "soulgeyser",
    "color": [
@@ -590,6 +620,7 @@
   },
   {
    "id": "scream",
+   "num": 31,
    "name": "Крик",
    "icon": "scream",
    "color": [
@@ -605,6 +636,622 @@
     "cooldown": 45.0
    },
    "drop_only": true
+  },
+  {
+   "id": "seven_seals",
+   "num": 101,
+   "name": "Семь печатей",
+   "icon": "seals",
+   "color": [
+    255,
+    225,
+    140
+   ],
+   "desc": "Каждые 7 убийств — волна света бьёт врагов. После неё ты несколько секунд теряешь скорость.",
+   "theme": "bible",
+   "rarity": "uncommon",
+   "mods": {},
+   "flags": [
+    "seven_seals"
+   ]
+  },
+  {
+   "id": "forbidden_fruit",
+   "num": 102,
+   "name": "Запретный плод",
+   "icon": "apple",
+   "color": [
+    230,
+    60,
+    70
+   ],
+   "desc": "Урон +40%. Враги становятся немного быстрее.",
+   "theme": "bible",
+   "rarity": "uncommon",
+   "mods": {
+    "damage": [
+     "mul",
+     1.4
+    ]
+   },
+   "flags": [
+    "enemy_haste"
+   ]
+  },
+  {
+   "id": "crown_of_thorns",
+   "num": 103,
+   "name": "Терновый венец",
+   "icon": "thorncrown",
+   "color": [
+    150,
+    200,
+    90
+   ],
+   "desc": "Враги, касающиеся тебя, получают ответный урон. Скорость −15%.",
+   "theme": "bible",
+   "rarity": "common",
+   "mods": {
+    "speed": [
+     "mul",
+     0.85
+    ]
+   },
+   "flags": [
+    "thorns"
+   ]
+  },
+  {
+   "id": "tablets_of_covenant",
+   "num": 104,
+   "name": "Скрижали Завета",
+   "icon": "tablets",
+   "color": [
+    210,
+    200,
+    170
+   ],
+   "desc": "Каждые 10 с щит поглощает один удар. После его разрушения скорость на время падает.",
+   "theme": "bible",
+   "rarity": "uncommon",
+   "mods": {},
+   "flags": [
+    "tablets"
+   ]
+  },
+  {
+   "id": "flaming_sword",
+   "num": 105,
+   "name": "Пылающий меч",
+   "icon": "flamesword",
+   "color": [
+    255,
+    140,
+    50
+   ],
+   "desc": "Выстрелы оставляют огненный след. Дальность атаки меньше.",
+   "theme": "bible",
+   "rarity": "uncommon",
+   "mods": {
+    "range": [
+     "mul",
+     0.8
+    ]
+   },
+   "flags": [
+    "flame_trail"
+   ]
+  },
+  {
+   "id": "book_of_revelation",
+   "num": 106,
+   "name": "Книга Откровения",
+   "icon": "revbook",
+   "color": [
+    180,
+    150,
+    255
+   ],
+   "desc": "Активный (Q): случайное пророчество — гибель врагов, исцеление или усиление. Иногда пророчество ложно и ослабляет тебя. Перезарядка 40 с.",
+   "theme": "bible",
+   "rarity": "rare",
+   "mods": {},
+   "flags": [],
+   "active": {
+    "type": "prophecy",
+    "cooldown": 40.0
+   }
+  },
+  {
+   "id": "thirty_silver",
+   "num": 107,
+   "name": "Тридцать сребреников",
+   "icon": "silver",
+   "color": [
+    200,
+    205,
+    215
+   ],
+   "desc": "С врагов падает больше монет. Каждая покупка снижает макс. здоровье до конца этажа.",
+   "theme": "bible",
+   "rarity": "common",
+   "mods": {},
+   "flags": [
+    "silver"
+   ]
+  },
+  {
+   "id": "holy_grail",
+   "num": 108,
+   "name": "Святой Грааль",
+   "icon": "grail",
+   "color": [
+    255,
+    215,
+    90
+   ],
+   "desc": "Убийство босса полностью лечит. Обычные лечебные предметы работают вполовину слабее.",
+   "theme": "bible",
+   "rarity": "divine",
+   "mods": {},
+   "flags": [
+    "grail"
+   ]
+  },
+  {
+   "id": "seraph_wings",
+   "num": 109,
+   "name": "Крылья серафима",
+   "icon": "seraphwings",
+   "color": [
+    255,
+    248,
+    210
+   ],
+   "desc": "Уклонение (Space) становится коротким полётом над препятствиями. После приземления ты ненадолго замедляешься.",
+   "theme": "bible",
+   "rarity": "rare",
+   "mods": {},
+   "flags": [
+    "flight",
+    "seraph"
+   ]
+  },
+  {
+   "id": "scales_of_justice",
+   "num": 110,
+   "name": "Весы правосудия",
+   "icon": "scales",
+   "color": [
+    230,
+    200,
+    120
+   ],
+   "desc": "При полном здоровье урон +20%, при низком — скорость +20%. Оба бонуса сразу получить нельзя.",
+   "theme": "bible",
+   "rarity": "common",
+   "mods": {},
+   "flags": [
+    "scales"
+   ]
+  },
+  {
+   "id": "perun_axe",
+   "num": 111,
+   "name": "Топор Перуна",
+   "icon": "perunaxe",
+   "color": [
+    110,
+    170,
+    255
+   ],
+   "desc": "Каждая пятая атака вызывает удар молнии. Остальные атаки слабее на 10%.",
+   "theme": "slavic",
+   "rarity": "uncommon",
+   "mods": {},
+   "flags": [
+    "perun"
+   ]
+  },
+  {
+   "id": "bone_mortar",
+   "num": 112,
+   "name": "Костяная ступа",
+   "icon": "mortar",
+   "color": [
+    225,
+    215,
+    190
+   ],
+   "desc": "Активный (Q): ступа проезжает через комнату, давя врагов. Потом 3 с нельзя атаковать. Перезарядка 25 с.",
+   "theme": "slavic",
+   "rarity": "rare",
+   "mods": {},
+   "flags": [],
+   "active": {
+    "type": "mortar",
+    "cooldown": 25.0
+   }
+  },
+  {
+   "id": "leshy_horn",
+   "num": 113,
+   "name": "Рог Лешего",
+   "icon": "leshyhorn",
+   "color": [
+    110,
+    190,
+    100
+   ],
+   "desc": "Лесной дух бьёт ближайшего врага. В комнатах без врагов он иногда портит добычу.",
+   "theme": "slavic",
+   "rarity": "uncommon",
+   "mods": {},
+   "flags": [
+    "leshy"
+   ]
+  },
+  {
+   "id": "koschei_needle",
+   "num": 114,
+   "name": "Игла Кощея",
+   "icon": "koscheineedle",
+   "color": [
+    170,
+    170,
+    200
+   ],
+   "desc": "Первый смертельный удар за этаж оставляет тебе немного здоровья, но макс. здоровье на время падает.",
+   "theme": "slavic",
+   "rarity": "rare",
+   "mods": {},
+   "flags": [
+    "needle"
+   ]
+  },
+  {
+   "id": "serpent_tooth",
+   "num": 115,
+   "name": "Змеиный зуб",
+   "icon": "fang",
+   "color": [
+    235,
+    235,
+    200
+   ],
+   "desc": "Выстрел иногда делится на три слабых снаряда.",
+   "theme": "slavic",
+   "rarity": "common",
+   "mods": {},
+   "flags": [
+    "fang"
+   ]
+  },
+  {
+   "id": "crown_of_morana",
+   "num": 116,
+   "name": "Корона Мораны",
+   "icon": "moranacrown",
+   "color": [
+    160,
+    220,
+    255
+   ],
+   "desc": "Атаки могут заморозить врага. Скорость −8%.",
+   "theme": "slavic",
+   "rarity": "common",
+   "mods": {
+    "speed": [
+     "mul",
+     0.92
+    ]
+   },
+   "flags": [
+    "morana"
+   ]
+  },
+  {
+   "id": "firebird_feather",
+   "num": 117,
+   "name": "Перо Жар-птицы",
+   "icon": "firefeather",
+   "color": [
+    255,
+    150,
+    40
+   ],
+   "desc": "Каждые 15 с боя выпускает огненную волну. Она сжигает часть выпавшей добычи.",
+   "theme": "slavic",
+   "rarity": "uncommon",
+   "mods": {},
+   "flags": [
+    "firebird"
+   ]
+  },
+  {
+   "id": "domovoi_charm",
+   "num": 118,
+   "name": "Домовой оберег",
+   "icon": "charm",
+   "color": [
+    200,
+    150,
+    100
+   ],
+   "desc": "После зачистки комнаты есть шанс получить награду. При низком здоровье шанс падает.",
+   "theme": "slavic",
+   "rarity": "common",
+   "mods": {},
+   "flags": [
+    "domovoi"
+   ]
+  },
+  {
+   "id": "veles_staff",
+   "num": 119,
+   "name": "Посох Велеса",
+   "icon": "velesstaff",
+   "color": [
+    190,
+    150,
+    80
+   ],
+   "desc": "Больше монет и выше шанс редких находок. Урон −15%.",
+   "theme": "slavic",
+   "rarity": "common",
+   "mods": {
+    "damage": [
+     "mul",
+     0.85
+    ],
+    "luck": [
+     "add",
+     2.0
+    ]
+   },
+   "flags": [
+    "veles"
+   ]
+  },
+  {
+   "id": "rusalka_wreath",
+   "num": 120,
+   "name": "Венок русалки",
+   "icon": "wreath",
+   "color": [
+    120,
+    220,
+    200
+   ],
+   "desc": "Скорость выше, малые опасные зоны тебя не ранят. Крупные зоны бьют больнее.",
+   "theme": "slavic",
+   "rarity": "common",
+   "mods": {
+    "speed": [
+     "mul",
+     1.12
+    ]
+   },
+   "flags": [
+    "rusalka"
+   ]
+  },
+  {
+   "id": "prometheus_fire",
+   "num": 121,
+   "name": "Огонь Прометея",
+   "icon": "torchfire",
+   "color": [
+    255,
+    120,
+    40
+   ],
+   "desc": "Огонь бьёт на 50% сильнее и поджигает врагов. Иногда обжигает и тебя.",
+   "theme": "greek",
+   "rarity": "uncommon",
+   "mods": {},
+   "flags": [
+    "prometheus"
+   ]
+  },
+  {
+   "id": "pandora_box",
+   "num": 122,
+   "name": "Ящик Пандоры",
+   "icon": "pandorabox",
+   "color": [
+    200,
+    140,
+    255
+   ],
+   "desc": "Активный (Q): случайный эффект, в том числе редкие усиления. Некоторые вызывают проклятие комнаты. Перезарядка 35 с.",
+   "theme": "greek",
+   "rarity": "divine",
+   "mods": {},
+   "flags": [],
+   "active": {
+    "type": "pandora",
+    "cooldown": 35.0
+   }
+  },
+  {
+   "id": "icarus_wings",
+   "num": 123,
+   "name": "Крылья Икара",
+   "icon": "icaruswings",
+   "color": [
+    255,
+    210,
+    110
+   ],
+   "desc": "Скорость выше, уклонение (Space) — полёт над препятствиями. Частые полёты вызывают замедление.",
+   "theme": "greek",
+   "rarity": "rare",
+   "mods": {
+    "speed": [
+     "mul",
+     1.15
+    ]
+   },
+   "flags": [
+    "flight",
+    "icarus"
+   ]
+  },
+  {
+   "id": "medusa_head",
+   "num": 124,
+   "name": "Голова Медузы",
+   "icon": "medusa",
+   "color": [
+    130,
+    200,
+    120
+   ],
+   "desc": "Попадания могут окаменить врага. Скорость атаки −10%.",
+   "theme": "greek",
+   "rarity": "common",
+   "mods": {
+    "fire_delay": [
+     "mul",
+     1.11
+    ]
+   },
+   "flags": [
+    "medusa"
+   ]
+  },
+  {
+   "id": "hades_helm",
+   "num": 125,
+   "name": "Шлем Аида",
+   "icon": "helm",
+   "color": [
+    100,
+    100,
+    140
+   ],
+   "desc": "Активный (Q): невидимость на 4 с, враги тебя не достают. Но ты не можешь наносить урон. Перезарядка 30 с.",
+   "theme": "greek",
+   "rarity": "rare",
+   "mods": {},
+   "flags": [],
+   "active": {
+    "type": "helm",
+    "cooldown": 30.0
+   }
+  },
+  {
+   "id": "achilles_greaves",
+   "num": 126,
+   "name": "Поножи Ахиллеса",
+   "icon": "greaves",
+   "color": [
+    220,
+    180,
+    90
+   ],
+   "desc": "Скорость +30%, урон +20%. Получив удар, ты на несколько секунд теряешь бонус скорости.",
+   "theme": "greek",
+   "rarity": "uncommon",
+   "mods": {
+    "speed": [
+     "mul",
+     1.3
+    ],
+    "damage": [
+     "mul",
+     1.2
+    ]
+   },
+   "flags": [
+    "achilles"
+   ]
+  },
+  {
+   "id": "hermes_sandals",
+   "num": 127,
+   "name": "Сандалии Гермеса",
+   "icon": "sandals",
+   "color": [
+    240,
+    230,
+    170
+   ],
+   "desc": "Скорость +35%, урон −15%.",
+   "theme": "greek",
+   "rarity": "common",
+   "mods": {
+    "speed": [
+     "mul",
+     1.35
+    ],
+    "damage": [
+     "mul",
+     0.85
+    ]
+   },
+   "flags": [
+    "hermes"
+   ]
+  },
+  {
+   "id": "ariadne_thread",
+   "num": 128,
+   "name": "Нить Ариадны",
+   "icon": "thread",
+   "color": [
+    240,
+    100,
+    110
+   ],
+   "desc": "Активный (Q): вернуться в предыдущую комнату (не в бою). Потом ты ненадолго замедляешься. Перезарядка 30 с.",
+   "theme": "greek",
+   "rarity": "rare",
+   "mods": {},
+   "flags": [],
+   "active": {
+    "type": "thread",
+    "cooldown": 30.0
+   }
+  },
+  {
+   "id": "charon_coin",
+   "num": 129,
+   "name": "Монета Харона",
+   "icon": "charoncoin",
+   "color": [
+    170,
+    200,
+    210
+   ],
+   "desc": "После босса появляется дополнительная награда. Если эффект не сработал, монета занимает место обычной награды.",
+   "theme": "greek",
+   "rarity": "uncommon",
+   "mods": {},
+   "flags": [
+    "charon"
+   ]
+  },
+  {
+   "id": "zeus_lightning",
+   "num": 130,
+   "name": "Молния Зевса",
+   "icon": "zeusbolt",
+   "color": [
+    255,
+    240,
+    120
+   ],
+   "desc": "Активный (Q): мощная молния бьёт всех врагов на линии прицела. Потом 2.5 с нельзя атаковать. Перезарядка 20 с.",
+   "theme": "greek",
+   "rarity": "divine",
+   "mods": {},
+   "flags": [],
+   "active": {
+    "type": "zeus",
+    "cooldown": 20.0
+   }
   }
  ],
  "combos": [
@@ -667,6 +1314,131 @@
    "name": "Переключение каналов",
    "desc": "Вместо монет с врагов выпадает случайный предмет.",
    "flag": "channel_loot"
+  },
+  {
+   "id": "seals_book",
+   "needs": [
+    "seven_seals",
+    "book_of_revelation"
+   ],
+   "name": "Печать пророчества",
+   "desc": "Волна света мощнее и повторяется дважды; пророчества всегда к добру.",
+   "flag": "seals_book"
+  },
+  {
+   "id": "flame_seraph",
+   "needs": [
+    "flaming_sword",
+    "seraph_wings"
+   ],
+   "name": "Пламя серафима",
+   "desc": "Огненный след — широкая дуга пламени; в полёте за тобой горит след.",
+   "flag": "flame_seraph"
+  },
+  {
+   "id": "silver_scales",
+   "needs": [
+    "thirty_silver",
+    "scales_of_justice"
+   ],
+   "name": "Весы и серебро",
+   "desc": "Покупки не отнимают здоровье, а ослабляют врагов; монеты усиливают бонус слабого состояния.",
+   "flag": "silver_scales"
+  },
+  {
+   "id": "veles_perun",
+   "needs": [
+    "veles_staff",
+    "perun_axe"
+   ],
+   "name": "Громовая дань",
+   "desc": "Удары молнии могут оставить монеты.",
+   "flag": "veles_perun"
+  },
+  {
+   "id": "rusalka_morana",
+   "needs": [
+    "rusalka_wreath",
+    "crown_of_morana"
+   ],
+   "name": "Зимняя русалка",
+   "desc": "Заморозив врага, ты получаешь короткое ускорение.",
+   "flag": "rusalka_morana"
+  },
+  {
+   "id": "pandora_ariadne",
+   "needs": [
+    "pandora_box",
+    "ariadne_thread"
+   ],
+   "name": "Клубок надежды",
+   "desc": "Раз за этаж проклятие Ящика отменяется, а награда остаётся.",
+   "flag": "pandora_ariadne"
+  },
+  {
+   "id": "charon_hades",
+   "needs": [
+    "charon_coin",
+    "hades_helm"
+   ],
+   "name": "Паром теней",
+   "desc": "Награда за босса сопровождается призрачной атакой; выход из невидимости выпускает волну духов.",
+   "flag": "charon_hades"
+  },
+  {
+   "id": "hermes_icarus",
+   "needs": [
+    "hermes_sandals",
+    "icarus_wings"
+   ],
+   "name": "Воздушный след",
+   "desc": "После рывка за тобой летит воздушный снаряд.",
+   "flag": "hermes_icarus"
+  },
+  {
+   "id": "zeus_perun",
+   "needs": [
+    "zeus_lightning",
+    "perun_axe"
+   ],
+   "name": "Небесный гром",
+   "desc": "Молния Зевса разделяется на несколько ударов и бьёт врагов вокруг.",
+   "flag": "zeus_perun"
+  },
+  {
+   "id": "three_gods",
+   "needs": [
+    "zeus_lightning",
+    "perun_axe",
+    "seven_seals"
+   ],
+   "name": "Суд трёх богов",
+   "desc": "Молния вызывает огромную цепную атаку по почти всей комнате. После неё скорость временно падает.",
+   "flag": "three_gods",
+   "hidden": true
+  },
+  {
+   "id": "fall_from_heaven",
+   "needs": [
+    "icarus_wings",
+    "seraph_wings"
+   ],
+   "name": "Падение с небес",
+   "desc": "Полёт оставляет огненно-световой след, жгущий врагов. После приземления ты замедляешься.",
+   "flag": "fall_heaven",
+   "hidden": true
+  },
+  {
+   "id": "price_of_immortality",
+   "needs": [
+    "koschei_needle",
+    "holy_grail",
+    "hades_helm"
+   ],
+   "name": "Цена бессмертия",
+   "desc": "Раз за забег ты переживаешь смертельный удар. Потом эти три предмета теряют силу до конца этажа.",
+   "flag": "immortality",
+   "hidden": true
   }
  ]
 }

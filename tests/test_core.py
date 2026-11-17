@@ -2016,5 +2016,163 @@ class LightingOptimizationTests(unittest.TestCase):
                 self.assertLess(surf.get_at((int(tip[0]), int(tip[1])))[0], 200, f"t={t}")
 
 
+
+class Artifacts110DataTests(unittest.TestCase):
+    """Версия 1.1.0: 30 артефактов (10 библейских, 10 древнерусских, 10 греческих), редкость, id и номера."""
+
+    def setUp(self):
+        self.db = ItemDatabase.from_file()
+        self.new = [d for d in self.db.items.values() if d.theme]
+
+    def test_thirty_artifacts_ten_per_theme(self):
+        self.assertEqual(len(self.new), 30)
+        for theme in ("bible", "slavic", "greek"):
+            self.assertEqual(sum(1 for d in self.new if d.theme == theme), 10)
+
+    def test_rarity_counts(self):
+        counts = {r: sum(1 for d in self.new if d.rarity == r) for r in ("common", "uncommon", "rare", "divine")}
+        self.assertEqual(counts, {"common": 10, "uncommon": 10, "rare": 7, "divine": 3})
+
+    def test_ids_and_numbers_are_unique(self):
+        self.assertEqual(len({d.id for d in self.db.items.values()}), len(self.db.items))
+        nums = [d.num for d in self.db.items.values()]
+        self.assertNotIn(0, nums)
+        self.assertEqual(len(nums), len(set(nums)))
+
+    def test_resolve_by_id_number_and_prefix(self):
+        self.assertEqual(self.db.resolve("seven_seals"), "seven_seals")
+        self.assertEqual(self.db.resolve("101"), "seven_seals")
+        self.assertEqual(self.db.resolve("zeus"), "zeus_lightning")
+        self.assertEqual(self.db.resolve("ZEUS_LIGHTNING"), "zeus_lightning")
+        self.assertIsNone(self.db.resolve("no_such_item"))
+        self.assertIsNone(self.db.resolve("9999"))
+
+    @unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+    def test_active_artifacts_are_known_types(self):
+        from game.systems.artifacts import ARTIFACT_ACTIVES
+        actives = {d.active["type"] for d in self.new if d.active}
+        self.assertEqual(actives, set(ARTIFACT_ACTIVES))
+
+    def test_synergies(self):
+        self.assertIn("seals_book", self.db.flags(["seven_seals", "book_of_revelation"]))
+        self.assertIn("three_gods", self.db.flags(["zeus_lightning", "perun_axe", "seven_seals"]))
+        self.assertNotIn("three_gods", self.db.flags(["zeus_lightning", "perun_axe"]))
+        self.assertIn("fall_heaven", self.db.flags(["icarus_wings", "seraph_wings"]))
+        self.assertIn("immortality", self.db.flags(["koschei_needle", "holy_grail", "hades_helm"]))
+        hidden = {c["id"] for c in self.db.combos if c.get("hidden")}
+        self.assertEqual(hidden, {"three_gods", "fall_from_heaven", "price_of_immortality"})
+
+    @unittest.skipUnless(HAS_PYGAME, "pygame не установлен")
+    def test_hidden_synergies_are_not_spoiled_in_bestiary(self):
+        from game.bestiary import build_entries
+        from game.entities.enemy import load_enemy_defs
+        data = {"defeated": [], "seen_items": ["zeus_lightning", "perun_axe", "seven_seals"], "boss_kills": {}}
+        cats = dict(build_entries(self.db, load_enemy_defs(), data))
+        zeus = next(e for e in cats["Предметы"] if e["id"] == "zeus_lightning")
+        self.assertIn("Перуна", zeus["desc"])          # открытое комбо с Топором Перуна показано
+        self.assertNotIn("Суд трёх богов", zeus["desc"])
+
+    def test_stat_mods(self):
+        self.assertAlmostEqual(self.db.stats(["forbidden_fruit"])["damage"], BASE_STATS["damage"] * 1.4)
+        self.assertAlmostEqual(self.db.stats(["hermes_sandals"])["speed"], BASE_STATS["speed"] * 1.35)
+        s = self.db.stats(["achilles_greaves"])
+        self.assertAlmostEqual(s["speed"], BASE_STATS["speed"] * 1.3)
+        self.assertAlmostEqual(s["damage"], BASE_STATS["damage"] * 1.2)
+        self.assertLess(self.db.stats(["veles_staff"])["damage"], BASE_STATS["damage"])
+
+
+class DevConsoleTests(unittest.TestCase):
+    """Консоль (F4 + 3): команды работают без pygame и не включают тест-режим."""
+
+    def make(self):
+        from game.console import DevConsole
+        db = ItemDatabase.from_file()
+        calls = []
+        player = SimpleNamespace(god=False, hp=6, max_hp=6, coins=0, debug_damage=None, debug_max_hp=None,
+                                 stats={"damage": 3.0}, recompute=lambda: None,
+                                 inv=SimpleNamespace(items=[], active_id=None, active_cd=0.0))
+
+        def give(item_id, silent=False):
+            player.inv.items.append(item_id)
+            calls.append(item_id)
+
+        play = SimpleNamespace(db=db, player=player, cheated=False, console=None, give_item=give,
+                               add_coins=lambda n: setattr(player, "coins", player.coins + n),
+                               room=SimpleNamespace(enemies=[]))
+        return DevConsole(play), play, calls
+
+    def texts(self, con):
+        return [t for t, _ in con.lines]
+
+    def test_give_by_id_and_number(self):
+        con, play, calls = self.make()
+        con.execute("give seven_seals")
+        con.execute("give 130")
+        self.assertEqual(calls, ["seven_seals", "zeus_lightning"])
+        con.execute("give seven_seals")
+        self.assertEqual(calls, ["seven_seals", "zeus_lightning"])     # дубликат не выдаётся
+        con.execute("give nothing_like_this")
+        self.assertTrue(any("Unknown item" in t for t in self.texts(con)))
+        self.assertFalse(play.cheated)
+
+    def test_every_item_can_be_given(self):
+        con, play, calls = self.make()
+        for item_id in play.db.items:
+            con.execute(f"give {item_id}")
+        self.assertEqual(set(calls), set(play.db.items))
+
+    def test_stat_commands_do_not_mark_run_as_cheated(self):
+        con, play, _ = self.make()
+        for line in ("god", "damage 12", "maxhp 5h", "hp 4", "coins 10", "coins set 3", "heal", "reset"):
+            con.execute(line)
+        self.assertTrue(play.player.god)
+        self.assertEqual(play.player.coins, 3)
+        self.assertIsNone(play.player.debug_damage)
+        self.assertFalse(play.cheated)
+
+    def test_maxhp_in_hearts_and_units(self):
+        con, play, _ = self.make()
+        con.execute("maxhp 12")
+        self.assertEqual(play.player.debug_max_hp, 12)
+        con.execute("maxhp 6h")
+        self.assertEqual(play.player.debug_max_hp, 12)
+
+    def test_unknown_command_and_bad_arguments_are_reported_not_raised(self):
+        con, _, _ = self.make()
+        con.execute("frobnicate")
+        con.execute("damage abc")
+        con.execute("teleport nowhere")
+        self.assertGreaterEqual(sum(1 for t in self.texts(con) if "Unknown command" in t or t.startswith("Error")), 3)
+
+    def test_remove_and_inventory(self):
+        con, play, _ = self.make()
+        con.execute("give broom")
+        con.execute("remove broom")
+        self.assertNotIn("broom", play.player.inv.items)
+
+    def test_zone_names_resolve(self):
+        con, _, _ = self.make()
+        self.assertEqual(con.resolve_zone("forest"), "forest")
+        self.assertEqual(con.resolve_zone("arena"), "shine")
+        self.assertEqual(con.resolve_zone("Hell"), "hell")
+        self.assertIsNone(con.resolve_zone("mars"))
+
+    def test_tab_completion(self):
+        con, _, _ = self.make()
+        con.input = "giv"
+        con.complete()
+        self.assertEqual(con.input, "give ")
+        con.input = "give seven_s"
+        con.complete()
+        self.assertEqual(con.input, "give seven_seals ")
+
+    def test_every_command_has_help(self):
+        from game.console import HELP
+        con, _, _ = self.make()
+        for name in con.commands:
+            if name != "exit":
+                self.assertIn(name, HELP)
+
+
 if __name__ == "__main__":
     unittest.main()
