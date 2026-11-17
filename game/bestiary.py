@@ -85,7 +85,7 @@ def build_entries(items_db, enemy_defs, save_data, boss_factory=None):
         desc = item.desc
         combos = []
         for c in items_db.combos:
-            if item_id in c["needs"]:
+            if item_id in c["needs"] and not c.get("hidden"):   # скрытые синергии в бестиарии не подсказываем
                 partner = next(n for n in c["needs"] if n != item_id)
                 combos.append(f"{item.name} + {names[partner] if partner in seen_items else '???'}")
         if got and combos:

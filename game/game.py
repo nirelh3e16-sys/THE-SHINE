@@ -153,7 +153,7 @@ class Game:
 
     @staticmethod
     def _combo(event, *second_keys):
-        """F4 + клавиша (в любом порядке нажатия). F4 + 1 — счётчик FPS, F4 + T — тест-меню."""
+        """F4 + клавиша (в любом порядке нажатия). F4 + 1 — счётчик FPS, F4 + T — тест-меню, F4 + 3 — консоль."""
         keys = pygame.key.get_pressed()
         if event.key == pygame.K_F4:
             return any(keys[k] for k in second_keys)
@@ -178,6 +178,9 @@ class Game:
                 elif event.type == pygame.KEYDOWN and self._combo(event, pygame.K_t):
                     if isinstance(self.state, PlayState):  # тест-меню доступно только в игре
                         self.state.toggle_debug()
+                elif event.type == pygame.KEYDOWN and self._combo(event, pygame.K_3, pygame.K_KP3):
+                    if isinstance(self.state, PlayState):  # консоль разработчика — только в забеге
+                        self.state.toggle_console()
                 elif event.type == pygame.KEYDOWN and self._combo(event, pygame.K_2, pygame.K_KP2):
                     if isinstance(self.state, PlayState):  # статистика персонажа — только в игре
                         self.state.toggle_stats()
